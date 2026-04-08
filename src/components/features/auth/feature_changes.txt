@@ -1,0 +1,17 @@
+create compdyty (collection crud operation) (comodyty ,name)
+show comodyty which is created in dropdown in warehouse page
+
+- add field of user email,phone no,full name,truck number,start date and end date
+
+in warehouse user can select multiple comodyty
+
+after submit a booking request make invoice base on selected comodyty 
+by selected period of time
+
+
+
+
+-external feature
+
+show table of all booking warehouse
+

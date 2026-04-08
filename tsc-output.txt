@@ -1,0 +1,1 @@
+﻿src/app/api/analytics/dashboards/route.ts(36,4): error TS1005: '}' expected.
