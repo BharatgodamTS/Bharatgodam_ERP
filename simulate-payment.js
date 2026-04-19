@@ -62,16 +62,9 @@ async function simulatePayment() {
       return;
     }
 
-    // Map warehouse name to warehouse ID
-    const warehouseNameToId = {
-      'Warehouse 1': 'WH1',
-      'Warehouse 2': 'WH2',
-      'Warehouse 3': 'WH3',
-      'Warehouse 4': 'WH4',
-      'Warehouse 5': 'WH5',
-    };
-
-    const warehouseId = warehouseNameToId[booking.warehouseName] || 'WH1';
+    // Get warehouse ID from database by name
+    const warehouse = await db.collection('warehouses').findOne({ name: booking.warehouseName });
+    const warehouseId = warehouse ? warehouse._id.toString() : 'WH1'; // Fallback to WH1 if not found
 
     console.log(`📤 Notifying revenue distribution system...`);
     console.log(`   Booking ID: ${booking._id.toString()}`);

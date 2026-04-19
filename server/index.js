@@ -2,19 +2,16 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const PORT = process.env.REVENUE_SERVER_PORT || 4000;
 const MONGODB_URL = process.env.MONGODB_URL || 'mongodb://127.0.0.1:27017';
-const MONGODB_DB = process.env.MONGODB_DB || 'wms-app';
-const COLLECTION_NAME = 'revenue_distributions';
+const MONGODB_DB = process.env.MONGODB_DB || 'wms_production';
+const COLLECTION_NAME = 'revenuedistributions';
 
 const warehouseNames = {
-  'WH1': 'Warehouse 1',
-  'WH2': 'Warehouse 2',
-  'WH3': 'Warehouse 3',
-  'WH4': 'Warehouse 4',
-  'WH5': 'Warehouse 5',
+  '69e0c97dcaec663cd7815776': 'Warehouse ABC',
+  '69e0c97dcaec663cd7815777': 'Warehouse XYZ',
 };
 
 function getWarehouseName(warehouseId) {
@@ -31,14 +28,15 @@ function getDistribution(totalAmount) {
   return { ownerShare, platformShare };
 }
 
-async function buildSummary(collection) {
+async function buildSummary(collection, query = {}) {
   const pipeline = [
+    { $match: query },
     {
       $group: {
         _id: null,
-        totalRevenue: { $sum: '$total_amount' },
-        totalOwnerShare: { $sum: '$owner_share' },
-        totalPlatformShare: { $sum: '$platform_share' },
+        totalRevenue: { $sum: '$totalAmount' },
+        totalOwnerShare: { $sum: '$ownerShare' },
+        totalPlatformShare: { $sum: '$platformShare' },
       },
     },
   ];
@@ -65,11 +63,19 @@ async function createServer() {
 
   const app = express();
   const server = http.createServer(app);
+  
+  // Determine allowed origins based on environment
+  const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:4000'];
+
   const io = new Server(server, {
     cors: {
-      origin: true,
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
+      credentials: true,
     },
+    transports: ['websocket', 'polling'],
   });
 
   app.use(cors({ origin: true }));
@@ -77,9 +83,25 @@ async function createServer() {
 
   app.get('/api/revenue-distribution', async (req, res) => {
     try {
-      const records = await revenueCollection.find().sort({ createdAt: -1 }).toArray();
-      const summary = await buildSummary(revenueCollection);
-      res.json({ success: true, summary, records });
+      const { warehouse } = req.query;
+      let query = {};
+
+      if (warehouse && warehouse !== 'ALL') {
+        query = {
+          warehouseId: new ObjectId(warehouse),
+        };
+      }
+
+      const records = await revenueCollection.find(query).sort({ createdAt: -1 }).toArray();
+      
+      // Add warehouse names to records
+      const recordsWithNames = records.map(record => ({
+        ...record,
+        warehouseName: getWarehouseName(record.warehouseId),
+      }));
+      
+      const summary = await buildSummary(revenueCollection, query);
+      res.json({ success: true, summary, records: recordsWithNames });
     } catch (error) {
       console.error('Failed to fetch revenue distribution:', error);
       res.status(500).json({ success: false, error: 'Failed to fetch revenue distribution' });
