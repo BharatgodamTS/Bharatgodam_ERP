@@ -221,4 +221,4 @@ wms-app/
 
 ## 📜 License
 
-MIT © 2026 WMS Pro. Built for agricultural logistics operations.
+MIT © 2026 WMS Pro. Built for agricultural logistics operations.# erp_system
