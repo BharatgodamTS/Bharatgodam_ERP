@@ -153,14 +153,15 @@ export async function createDetailedBooking(formData: DetailedLogisticsValues) {
       generatedAt:  new Date(),
     };
 
-    const invoiceRes = await db.collection('invoices').insertOne(invoiceDoc);
-    console.log(`[billing.ts] Invoice inserted: ID ${invoiceRes.insertedId}`);
-    console.log(`[billing.ts] Invoice Amount: ₹${invoiceDoc.totalAmount} (matches rent.totalAmount: ${invoiceDoc.totalAmount === rent.totalAmount ? '✓' : '✗'})`);
+    // DISABLED: Invoice auto-generation stopped as per user request
+    // const invoiceRes = await db.collection('invoices').insertOne(invoiceDoc);
+    // console.log(`[billing.ts] Invoice inserted: ID ${invoiceRes.insertedId}`);
+    // console.log(`[billing.ts] Invoice Amount: ₹${invoiceDoc.totalAmount} (matches rent.totalAmount: ${invoiceDoc.totalAmount === rent.totalAmount ? '✓' : '✗'})`);
 
     return {
       success: true,
       serialNo: sNo,
-      invoiceId: invoiceRes.insertedId.toString(),
+      // invoiceId: invoiceRes.insertedId.toString(),
       message: `Booking S.No #${sNo} saved successfully.`,
     };
 

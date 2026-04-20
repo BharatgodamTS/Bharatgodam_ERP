@@ -260,6 +260,7 @@ export async function processOutward(data: {
   commodityId: string;
   warehouseId: string;
   quantityMT: number;
+  bagsCount?: number;
   stackNo?: string;
   lotNo?: string;
   gatePass?: string;
@@ -378,481 +379,233 @@ export async function processOutward(data: {
   }
 }
 
+/**
+ * Get revenue analytics from invoices and payments with old logic
+ * Calculates revenue splits by warehouse and month, considering outward entries
+ */
 export async function getRevenueAnalyticsFromInvoices(warehouseId?: string) {
   await connectToDatabase();
 
   const db = mongoose.connection.db;
   if (!db) throw new Error('Database connection not established');
 
-  // Get inward transactions with populated data
-  const inwards = await db.collection('inwards').aggregate([
-    { $match: { clientId: new mongoose.Types.ObjectId(clientId) } },
-    {
-      $lookup: {
-        from: 'clients',
-        localField: 'clientId',
-        foreignField: '_id',
-        as: 'client'
-      }
-    },
-    {
-      $lookup: {
-        from: 'commodities',
-        localField: 'commodityId',
-        foreignField: '_id',
-        as: 'commodity'
-      }
-    },
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'warehouseId',
-        foreignField: '_id',
-        as: 'warehouse'
-      }
-    },
-    {
-      $addFields: {
-        client: { $arrayElemAt: ['$client', 0] },
-        commodityObj: { $arrayElemAt: ['$commodity', 0] },
-        warehouse: { $arrayElemAt: ['$warehouse', 0] },
-        type: 'INWARD',
-        transactionType: 'Stock Inward',
-        amount: 0,
-        description: {
-          $concat: [
-            "Stock Inward - ",
-            { $toString: "$quantityMT" },
-            " MT"
-          ]
-        }
-      }
-    }
-  ]).toArray();
+  try {
+    // Get all ledger entries
+    const allLedgerEntries = await db.collection('ledger_entries').find({}).toArray();
 
-  // Get outward transactions with populated data
-  const outwards = await db.collection('outwards').aggregate([
-    { $match: { clientId: new mongoose.Types.ObjectId(clientId) } },
-    {
-      $lookup: {
-        from: 'clients',
-        localField: 'clientId',
-        foreignField: '_id',
-        as: 'client'
-      }
-    },
-    {
-      $lookup: {
-        from: 'commodities',
-        localField: 'commodityId',
-        foreignField: '_id',
-        as: 'commodity'
-      }
-    },
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'warehouseId',
-        foreignField: '_id',
-        as: 'warehouse'
-      }
-    },
-    {
-      $addFields: {
-        client: { $arrayElemAt: ['$client', 0] },
-        commodityObj: { $arrayElemAt: ['$commodity', 0] },
-        warehouse: { $arrayElemAt: ['$warehouse', 0] },
-        type: 'OUTWARD',
-        transactionType: 'Stock Outward',
-        amount: 0,
-        description: {
-          $concat: [
-            "Stock Outward - ",
-            { $toString: "$quantityMT" },
-            " MT"
-          ]
-        }
-      }
-    }
-  ]).toArray();
+    console.log('[getRevenueAnalyticsFromInvoices] Total ledger entries:', allLedgerEntries.length);
 
-  // Get ledger entries (billing periods)
-  const ledgerEntries = await db.collection('ledger_entries').aggregate([
-    { $match: { clientId: new mongoose.Types.ObjectId(clientId) } },
-    {
-      $lookup: {
-        from: 'clients',
-        localField: 'clientId',
-        foreignField: '_id',
-        as: 'client'
+    // Get outward entries to determine actual end dates
+    const outwards = await db.collection('outwards').find({}).toArray();
+    console.log('[getRevenueAnalyticsFromInvoices] Total outward entries:', outwards.length);
+
+    // Create map of earliest outward dates by client/warehouse/commodity
+    const outwardDates = new Map<string, Date>();
+    outwards.forEach(outward => {
+      const key = `${outward.clientId}-${outward.warehouseId}-${outward.commodityId}`;
+      const outwardDate = new Date(outward.date);
+      outwardDate.setHours(23, 59, 59, 999); // End of day
+
+      if (!outwardDates.has(key) || outwardDate < outwardDates.get(key)!) {
+        outwardDates.set(key, outwardDate);
       }
-    },
-    {
-      $lookup: {
-        from: 'commodities',
-        localField: 'commodityId',
-        foreignField: '_id',
-        as: 'commodity'
-      }
-    },
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'warehouseId',
-        foreignField: '_id',
-        as: 'warehouse'
-      }
-    },
-    {
-      $addFields: {
-        client: { $arrayElemAt: ['$client', 0] },
-        commodity: { $arrayElemAt: ['$commodity', 0] },
-        warehouse: { $arrayElemAt: ['$warehouse', 0] },
-        type: 'LEDGER',
-        transactionType: 'Billing Period',
-        amount: {
-          $multiply: [
-            '$quantityMT',
-            '$ratePerMTPerDay',
-            { $divide: [{ $subtract: [new Date('$periodEndDate'), new Date('$periodStartDate')] }, 1000 * 60 * 60 * 24] }
-          ]
-        },
-        description: `Billing: ${'$commodity.name'} - ${'$quantityMT'} MT @ ₹${'$ratePerMTPerDay'}/MT/day`
-      }
-    }
-  ]).toArray();
-
-  // Get invoice data
-  const invoices = await Invoice.find({ clientId })
-    .populate('warehouseId')
-    .sort({ createdAt: -1 })
-    .lean();
-
-  // Combine all transactions and sort by date
-  const allTransactions = [
-    ...inwards.map(inward => ({
-      ...inward,
-      _id: inward._id.toString(),
-      date: inward.createdAt || inward.date,
-      ledgerType: 'transaction'
-    })),
-    ...outwards.map(outward => ({
-      ...outward,
-      _id: outward._id.toString(),
-      date: outward.createdAt || outward.date,
-      ledgerType: 'transaction'
-    })),
-    ...ledgerEntries.map(entry => ({
-      ...entry,
-      _id: entry._id.toString(),
-      date: entry.createdAt,
-      ledgerType: 'billing'
-    })),
-    ...invoices.map(invoice => ({
-      ...invoice,
-      _id: invoice._id.toString(),
-      date: invoice.generatedAt || invoice.createdAt,
-      type: 'INVOICE',
-      transactionType: 'Invoice Generated',
-      amount: invoice.totalAmount,
-      description: `Invoice ${invoice.invoiceId} - ₹${invoice.totalAmount.toLocaleString()}`,
-      ledgerType: 'invoice'
-    }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  return JSON.parse(JSON.stringify(allTransactions));
-}
-
-export async function getRevenueAnalyticsFromInvoices(warehouseId?: string) {
-  await connectToDatabase();
-
-  const db = mongoose.connection.db;
-  if (!db) throw new Error('Database connection not established');
-
-  // Get all inward/outward transactions for inventory-based revenue calculation
-  const inwardMatch: any = {};
-  const outwardMatch: any = {};
-
-  if (warehouseId && warehouseId !== 'ALL') {
-    inwardMatch.warehouseId = new mongoose.Types.ObjectId(warehouseId);
-    outwardMatch.warehouseId = new mongoose.Types.ObjectId(warehouseId);
-  }
-
-  // Get all inward transactions
-  const inwards = await db.collection('inwards').aggregate([
-    { $match: inwardMatch },
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'warehouseId',
-        foreignField: '_id',
-        as: 'warehouse'
-      }
-    },
-    {
-      $lookup: {
-        from: 'clients',
-        localField: 'clientId',
-        foreignField: '_id',
-        as: 'client'
-      }
-    },
-    {
-      $lookup: {
-        from: 'commodities',
-        localField: 'commodityId',
-        foreignField: '_id',
-        as: 'commodity'
-      }
-    },
-    {
-      $addFields: {
-        warehouseName: { $arrayElemAt: ['$warehouse.name', 0] },
-        clientName: { $arrayElemAt: ['$client.name', 0] },
-        commodityName: { $arrayElemAt: ['$commodity.name', 0] },
-        ratePerMTPerDay: { $arrayElemAt: ['$commodity.ratePerMtPerDay', 0] }
-      }
-    }
-  ]).toArray();
-
-  // Get all outward transactions
-  const outwards = await db.collection('outwards').aggregate([
-    { $match: outwardMatch },
-    {
-      $lookup: {
-        from: 'warehouses',
-        localField: 'warehouseId',
-        foreignField: '_id',
-        as: 'warehouse'
-      }
-    },
-    {
-      $lookup: {
-        from: 'clients',
-        localField: 'clientId',
-        foreignField: '_id',
-        as: 'client'
-      }
-    },
-    {
-      $lookup: {
-        from: 'commodities',
-        localField: 'commodityId',
-        foreignField: '_id',
-        as: 'commodity'
-      }
-    },
-    {
-      $addFields: {
-        warehouseName: { $arrayElemAt: ['$warehouse.name', 0] },
-        clientName: { $arrayElemAt: ['$client.name', 0] },
-        commodityName: { $arrayElemAt: ['$commodity.name', 0] },
-        ratePerMTPerDay: { $arrayElemAt: ['$commodity.ratePerMtPerDay', 0] }
-      }
-    }
-  ]).toArray();
-
-  // Group by warehouse and month for inventory-based calculation
-  const warehouseMonthlyData = new Map<string, {
-    warehouseId: string;
-    warehouseName: string;
-    month: string;
-    year: number;
-    inventoryChanges: Array<{
-      date: string;
-      quantityMT: number;
-      type: 'INWARD' | 'OUTWARD';
-    }>;
-    commodityRates: Map<string, number>;
-  }>();
-
-  // Process inward transactions
-  for (const inward of inwards) {
-    const warehouseId = String(inward.warehouseId);
-    const warehouseName = inward.warehouseName || 'Unknown Warehouse';
-    const date = inward.date;
-    const monthKey = `${warehouseId}_${date.toISOString().slice(0, 7)}`; // YYYY-MM
-
-    const bucket = warehouseMonthlyData.get(monthKey) ?? {
-      warehouseId,
-      warehouseName,
-      month: date.toISOString().slice(0, 7),
-      year: date.getFullYear(),
-      inventoryChanges: [],
-      commodityRates: new Map()
-    };
-
-    // Add inward change
-    bucket.inventoryChanges.push({
-      date: date.toISOString().split('T')[0],
-      quantityMT: inward.quantityMT,
-      type: 'INWARD'
     });
 
-    // Store commodity rate
-    const commodityId = String(inward.commodityId);
-    const rate = Number(inward.ratePerMTPerDay) || 10;
-    bucket.commodityRates.set(commodityId, rate);
-
-    warehouseMonthlyData.set(monthKey, bucket);
-  }
-
-  // Process outward transactions
-  for (const outward of outwards) {
-    const warehouseId = String(outward.warehouseId);
-    const warehouseName = outward.warehouseName || 'Unknown Warehouse';
-    const date = outward.date;
-    const monthKey = `${warehouseId}_${date.toISOString().slice(0, 7)}`; // YYYY-MM
-
-    const bucket = warehouseMonthlyData.get(monthKey) ?? {
-      warehouseId,
-      warehouseName,
-      month: date.toISOString().slice(0, 7),
-      year: date.getFullYear(),
-      inventoryChanges: [],
-      commodityRates: new Map()
-    };
-
-    // Add outward change (negative quantity)
-    bucket.inventoryChanges.push({
-      date: date.toISOString().split('T')[0],
-      quantityMT: -outward.quantityMT,
-      type: 'OUTWARD'
-    });
-
-    // Store commodity rate
-    const commodityId = String(outward.commodityId);
-    const rate = Number(outward.ratePerMTPerDay) || 10;
-    bucket.commodityRates.set(commodityId, rate);
-
-    warehouseMonthlyData.set(monthKey, bucket);
-  }
-
-  // Calculate inventory-based revenue for each warehouse-month
-  const monthlyRevenueByWarehouse = [];
-  for (const [, bucket] of warehouseMonthlyData) {
-    // Use the first commodity rate found (assuming single commodity per warehouse-month for simplicity)
-    const ratePerDay = Array.from(bucket.commodityRates.values())[0] || 10;
-
-    const monthStart = new Date(`${bucket.month}-01T00:00:00.000Z`);
-    const openingInventory = Math.max(
-      0,
-      inwards.reduce((sum, inward) => {
-        if (String(inward.warehouseId) === bucket.warehouseId && inward.date < monthStart) {
-          return sum + inward.quantityMT;
-        }
-        return sum;
-      }, 0) -
-      outwards.reduce((sum, outward) => {
-        if (String(outward.warehouseId) === bucket.warehouseId && outward.date < monthStart) {
-          return sum + outward.quantityMT;
-        }
-        return sum;
-      }, 0)
-    );
-
-    if (openingInventory > 0) {
-      bucket.inventoryChanges.unshift({
-        date: monthStart.toISOString().split('T')[0],
-        quantityMT: openingInventory,
-        type: 'INWARD'
-      });
+    // Filter by warehouse if provided
+    let filteredEntries = allLedgerEntries;
+    if (warehouseId && warehouseId !== 'ALL') {
+      const warehouseObjectId = new mongoose.Types.ObjectId(warehouseId);
+      filteredEntries = allLedgerEntries.filter(entry =>
+        entry.warehouseId.toString() === warehouseObjectId.toString()
+      );
     }
 
-    // Calculate simple revenue based on transactions (simplified since inventory-based billing was removed)
-    const totalRevenue = bucket.inventoryChanges.reduce((sum, change) => {
-      // Simple calculation: assume average rate for the month
-      return sum + (change.quantityMT * ratePerDay * 30);
-    }, 0);
+    // Get warehouse names
+    const warehouseIds = [...new Set(filteredEntries.map((entry: any) => entry.warehouseId.toString()))];
+    const warehouses = await db.collection('warehouses').find({
+      _id: { $in: warehouseIds.map(id => new mongoose.Types.ObjectId(id)) }
+    }).toArray();
+    const warehouseMap = new Map(warehouses.map(w => [w._id.toString(), w.name]));
 
-    monthlyRevenueByWarehouse.push({
-      warehouseId: bucket.warehouseId,
-      warehouseName: bucket.warehouseName,
-      month: bucket.month,
-      year: bucket.year,
-      totalDays: 30, // Assume full month
-      totalQuantityDays: bucket.inventoryChanges.reduce((sum, change) => sum + change.quantityMT, 0),
-      avgQuantityMT: bucket.inventoryChanges.length > 0 ? bucket.inventoryChanges.reduce((sum, change) => sum + change.quantityMT, 0) / bucket.inventoryChanges.length : 0,
-      totalRevenue: Math.round(totalRevenue),
-      ownerShare: Math.round(totalRevenue * 0.6),
-      platformShare: Math.round(totalRevenue * 0.4),
-      endingInventory: bucket.inventoryChanges.length > 0 ? bucket.inventoryChanges[bucket.inventoryChanges.length - 1].quantityMT : 0,
-      ledgerCount: bucket.inventoryChanges.length
+    // Process entries and group by warehouse and month
+    const monthlyData = new Map<string, any>();
+    // Use as-of date as yesterday (2026-04-19) to match ledger logic
+    const currentDate = new Date('2026-04-19T00:00:00.000Z');
+    let totalRevenue = 0;
+
+    filteredEntries.forEach((entry: any) => {
+      const startDate = new Date(entry.periodStartDate);
+
+      let endDate = entry.periodEndDate ? new Date(entry.periodEndDate) : new Date(currentDate);
+      // Cap end date at as-of date (yesterday)
+      if (endDate > currentDate) {
+        endDate = new Date(currentDate);
+      }
+
+      // Adjust end date based on outward entries
+      const key = `${entry.clientId}-${entry.warehouseId}-${entry.commodityId}`;
+      if (outwardDates.has(key)) {
+        const outwardDate = outwardDates.get(key)!;
+        if (outwardDate > startDate && outwardDate < endDate) {
+          endDate = outwardDate;
+        }
+      }
+
+
+      // Skip entries that end before they start or have no valid period
+      if (endDate < startDate) {
+        return;
+      }
+
+      const quantity = entry.quantityMT || 0;
+      const rate = entry.ratePerMTPerDay || 0;
+      const warehouseIdStr = entry.warehouseId.toString();
+
+      // Calculate full rent for this ledger entry
+      const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const fullRent = quantity * rate * totalDays;
+
+      // Add to total revenue (sum of all ledger entry rents)
+      totalRevenue += fullRent;
+
+      // Now allocate this rent to billing months
+      const startYear = startDate.getFullYear();
+      const startMonth = startDate.getMonth();
+      const endYear = endDate.getFullYear();
+      const endMonth = endDate.getMonth();
+
+      // Track daily inventory for ending inventory calculation
+      const dailyInventory = new Map<string, number>();
+
+      for (let year = startYear; year <= endYear; year++) {
+        const monthStart = year === startYear ? startMonth : 0;
+        const monthEnd = year === endYear ? endMonth : 11;
+
+        for (let month = monthStart; month <= monthEnd; month++) {
+          const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+          const monthFirstDay = new Date(year, month, 1);
+          const monthLastDay = new Date(year, month + 1, 0);
+
+          let periodStart = monthFirstDay;
+          let periodEnd = monthLastDay;
+
+          // Adjust for start date
+          if (year === startYear && month === startMonth) {
+            periodStart = startDate;
+          }
+
+          // Adjust for end date
+          if (year === endYear && month === endMonth) {
+            periodEnd = endDate;
+          }
+
+          // Ensure periodStart is not before the overall start date
+          if (year === startYear && month === startMonth && periodStart < startDate) {
+            periodStart = startDate;
+          }
+
+          // Ensure periodEnd is not after the overall end date
+          if (year === endYear && month === endMonth && periodEnd > endDate) {
+            periodEnd = endDate;
+          }
+
+          if (periodStart <= periodEnd) {
+            const daysInMonth = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+            if (daysInMonth > 0) {
+              // Calculate proportional rent for this month
+              const monthlyRent = fullRent * (daysInMonth / totalDays);
+              const mapKey = `${warehouseIdStr}-${monthKey}`;
+
+              if (!monthlyData.has(mapKey)) {
+                monthlyData.set(mapKey, {
+                  warehouseId: entry.warehouseId,
+                  warehouseName: warehouseMap.get(warehouseIdStr) || 'Unknown',
+                  month: monthKey,
+                  totalRevenue: 0,
+                  totalDays: 0,
+                  ledgerCount: 0,
+                  totalQuantityDays: 0,
+                  avgQuantityMT: 0,
+                  endingInventory: 0,
+                  dailyInventory: new Map()
+                });
+              }
+
+              const data = monthlyData.get(mapKey);
+              data.totalRevenue += monthlyRent;
+              data.totalDays += daysInMonth;
+              data.ledgerCount += 1;
+              data.totalQuantityDays += quantity * daysInMonth;
+
+              // Track daily inventory for this month
+              for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
+                const dateKey = d.toISOString().split('T')[0];
+                data.dailyInventory.set(dateKey, (data.dailyInventory.get(dateKey) || 0) + quantity);
+              }
+            }
+          }
+        }
+      }
     });
-  }
 
-  // Sort by year/month descending
-  monthlyRevenueByWarehouse.sort((a, b) => {
-    if (a.year !== b.year) return b.year - a.year;
-    if (a.month !== b.month) return b.month < a.month ? 1 : -1;
-    return b.totalRevenue - a.totalRevenue;
-  });
+    // Calculate ending inventory as max daily inventory for each month
+    monthlyData.forEach((data) => {
+      const inventoryValues = Array.from(data.dailyInventory.values()) as number[];
+      const maxInventory = inventoryValues.length > 0 ? Math.max(...inventoryValues) : 0;
+      data.endingInventory = maxInventory;
+      data.avgQuantityMT = data.totalDays > 0 ? data.totalQuantityDays / data.totalDays : 0;
+    });
 
-  const totalRevenue = monthlyRevenueByWarehouse.reduce((sum, item) => sum + item.totalRevenue, 0);
-  const ownerEarnings = Math.round(totalRevenue * 0.6);
-  const platformCommissions = Math.round(totalRevenue * 0.4);
+    // Format results
+    const monthlyWarehouseRevenue = Array.from(monthlyData.values())
+      .map(item => ({
+        warehouseId: item.warehouseId.toString(),
+        warehouseName: item.warehouseName,
+        month: item.month,
+        totalDays: item.totalDays,
+        totalQuantityDays: Math.round(item.totalQuantityDays * 100) / 100,
+        avgQuantityMT: Math.round(item.avgQuantityMT * 100) / 100,
+        endingInventory: Math.round(item.endingInventory * 100) / 100,
+        ledgerCount: item.ledgerCount,
+        totalRevenue: Math.round(item.totalRevenue * 100) / 100,
+        ownerShare: Math.round(item.totalRevenue * 0.6 * 100) / 100,
+        platformShare: Math.round(item.totalRevenue * 0.4 * 100) / 100,
+        year: item.month.split('-')[0]
+      }))
+      .sort((a, b) => b.month.localeCompare(a.month));
 
-  // Get recent ledger entries for the logs (keeping for compatibility)
-  const recentLedgerEntries = await db.collection('ledger_entries')
-    .aggregate([
-      {
-        $match: {
-          quantityMT: { $exists: true, $ne: null },
-          ratePerMTPerDay: { $exists: true, $ne: null }
-        }
-      },
-      {
-        $lookup: {
-          from: 'warehouses',
-          localField: 'warehouseId',
-          foreignField: '_id',
-          as: 'warehouse'
-        }
-      },
-      {
-        $lookup: {
-          from: 'clients',
-          localField: 'clientId',
-          foreignField: '_id',
-          as: 'client'
-        }
-      },
-      {
-        $addFields: {
-          warehouseName: { $arrayElemAt: ['$warehouse.name', 0] },
-          clientName: { $arrayElemAt: ['$client.name', 0] }
-        }
-      },
-      { $sort: { createdAt: -1 } },
-      { $limit: 10 }
-    ]).toArray();
+    totalRevenue = Math.round(totalRevenue * 100) / 100;
+    const ownerEarnings = Math.round(totalRevenue * 0.6 * 100) / 100;
+    const platformCommissions = Math.round(totalRevenue * 0.4 * 100) / 100;
 
-  return {
-    summary: {
+    const summary = {
       totalRevenue,
       ownerEarnings,
-      platformCommissions,
-    },
-    monthlyWarehouseRevenue: monthlyRevenueByWarehouse,
-    recentLogs: recentLedgerEntries.map((entry: any) => {
-      // Calculate revenue for this ledger entry
-      const days = entry.periodEndDate && entry.periodStartDate
-        ? Math.max(1, Math.ceil((new Date(entry.periodEndDate).getTime() - new Date(entry.periodStartDate).getTime()) / (1000 * 60 * 60 * 24)))
-        : 30;
-      const totalAmount = Math.round((entry.quantityMT || 0) * (entry.ratePerMTPerDay || 10) * days);
-      const ownerShare = Math.round(totalAmount * 0.6);
-      const platformShare = Math.round(totalAmount * 0.4);
+      platformCommissions
+    };
 
-      return {
-        _id: entry._id.toString(),
-        createdAt: entry.createdAt,
-        totalAmount: totalAmount || 0,
-        ownerShare: ownerShare || 0,
-        platformShare: platformShare || 0,
-        clientId: { name: entry.clientName || 'Unknown Client' },
-        warehouseId: { name: entry.warehouseName || 'Unknown Warehouse' }
-      };
-    }),
-  };
+    console.log('[getRevenueAnalyticsFromInvoices] Summary:', summary);
+    console.log('[getRevenueAnalyticsFromInvoices] Monthly revenue entries:', monthlyWarehouseRevenue.length);
 
+    // Get recent logs from revenue distribution
+    const recentLogs = await db.collection('revenue_distribution_logs')
+      .find({})
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .toArray();
+
+    return {
+      summary,
+      monthlyWarehouseRevenue,
+      recentLogs: recentLogs || []
+    };
+  } catch (error: any) {
+    console.error('[getRevenueAnalyticsFromInvoices] Error:', error);
+    return {
+      summary: { totalRevenue: 0, ownerEarnings: 0, platformCommissions: 0 },
+      monthlyWarehouseRevenue: [],
+      recentLogs: []
+    };
+  }
 }

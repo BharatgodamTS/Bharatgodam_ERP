@@ -6,6 +6,7 @@
 import puppeteer, { Browser } from 'puppeteer';
 import { InvoiceData } from './types';
 import { generateInvoiceHTML } from './html-generator';
+import { generateInvoiceSummaryHTML } from './summary-html-generator';
 import { InvoiceValidator } from './validators';
 import fs from 'fs/promises';
 import path from 'path';
@@ -40,7 +41,8 @@ export async function closeBrowser(): Promise<void> {
  */
 export async function generateInvoicePDF(
   invoiceData: InvoiceData,
-  outputPath?: string
+  outputPath?: string,
+  summary?: boolean
 ): Promise<Buffer> {
   try {
     // Validate invoice data
@@ -52,8 +54,10 @@ export async function generateInvoicePDF(
       throw new Error(`Invoice validation failed:\n${errors}`);
     }
 
-    // Generate HTML
-    const html = generateInvoiceHTML(invoiceData);
+    // Generate HTML (summary or detailed)
+    const html = summary
+      ? generateInvoiceSummaryHTML(invoiceData)
+      : generateInvoiceHTML(invoiceData);
 
     // Launch browser and generate PDF
     const browser = await getBrowser();

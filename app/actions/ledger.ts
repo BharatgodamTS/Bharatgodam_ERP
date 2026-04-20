@@ -289,8 +289,8 @@ export async function generateClientMonthlyLedger(
   return monthlyLedgers;
 }
 
-export async function getClientMonthlyLedger(clientId: string, month?: string) {
-  console.log(`=== GETTING LEDGER FOR CLIENT: ${clientId}, MONTH: ${month || 'ALL'} ===`);
+export async function getClientMonthlyLedger(clientId: string, month?: string, warehouseId?: string) {
+  console.log(`=== GETTING LEDGER FOR CLIENT: ${clientId}, MONTH: ${month || 'ALL'}, WAREHOUSE: ${warehouseId || 'ANY'} ===`);
 
   const db = await getDb();
   if (!db) throw new Error('Database connection not established');
@@ -306,11 +306,13 @@ export async function getClientMonthlyLedger(clientId: string, month?: string) {
 
   console.log(`CLIENT FOUND: ${clientName} (${clientId})`);
 
-  // Get all transactions for the client
-  const transactions = await db.collection('transactions').find(
-    { clientId: clientId }, // Use string ID instead of ObjectId
-    { sort: { date: 1 } }
-  ).toArray();
+  // Build transaction query for the client
+  const transactionQuery: any = { clientId: clientId };
+  if (warehouseId && warehouseId !== 'ALL') {
+    transactionQuery.warehouseId = warehouseId;
+  }
+
+  const transactions = await db.collection('transactions').find(transactionQuery, { sort: { date: 1 } }).toArray();
 
   console.log(`CLIENT ${clientId} (${clientName}): Found ${transactions.length} transactions`);
   console.log('TRANSACTIONS:', transactions.map(t => ({

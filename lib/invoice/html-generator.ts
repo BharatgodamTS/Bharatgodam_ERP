@@ -10,30 +10,19 @@ import { formatCurrency, amountInWords, formatNumber } from './formatters';
  * Generates complete HTML for invoice
  */
 export function generateInvoiceHTML(data: InvoiceData): string {
-  const lineItemsHTML = data.lineItems
-    .map(
-      (item, idx) =>
-        `
-    <tr style="border-bottom: 1px solid #e5e7eb;">
-      <td style="padding: 10px; text-align: left; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.whCode}</td>
-      <td style="padding: 10px; text-align: left; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.billFrom}</td>
-      <td style="padding: 10px; text-align: left; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.itemName}</td>
-      <td style="padding: 10px; text-align: left; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.corNo}</td>
-      <td style="padding: 10px; text-align: left; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.billTo}</td>
-      <td style="padding: 10px; text-align: right; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.quantity}</td>
-      <td style="padding: 10px; text-align: right; font-size: 9pt; border-right: 1px solid #e5e7eb;">${formatNumber(item.weight, 3)}</td>
-      <td style="padding: 10px; text-align: center; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.month}</td>
-      <td style="padding: 10px; text-align: center; font-size: 9pt; border-right: 1px solid #e5e7eb;">${item.days}</td>
-      <td style="padding: 10px; text-align: right; font-size: 9pt; border-right: 1px solid #e5e7eb;">${formatCurrency(item.ratePerUnit, false)}</td>
-      <td style="padding: 10px; text-align: right; font-size: 9pt; border-right: 1px solid #e5e7eb;">${formatCurrency(item.storageChargesPerMonth, false)}</td>
-      <td style="padding: 10px; text-align: right; font-size: 9pt; font-weight: 500;">${formatCurrency(item.amount, false)}</td>
-    </tr>
-  `
-    )
-    .join('');
 
-  const totalQty = data.lineItems.reduce((sum, item) => sum + item.quantity, 0);
-  const totalWeight = data.lineItems.reduce((sum, item) => sum + item.weight, 0);
+  // Summary section logic
+  const commodityNames = Array.from(new Set(data.lineItems.map(item => item.itemName))).join(', ');
+  const totalAmount = data.lineItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const lastInventory = data.lineItems.length > 0 ? data.lineItems[data.lineItems.length - 1].quantity : 0;
+  // Get month name from invoice date (assume YYYY-MM-DD or similar)
+  let monthName = '';
+  if (data.metadata && data.metadata.invoiceDate) {
+    const dateObj = new Date(data.metadata.invoiceDate);
+    if (!isNaN(dateObj.getTime())) {
+      monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+    }
+  }
 
   const html = `
 <!DOCTYPE html>
@@ -263,35 +252,16 @@ export function generateInvoiceHTML(data: InvoiceData): string {
       </div>
     </div>
 
-    <!-- Line Items Table -->
-    <table class="line-items">
-      <thead>
-        <tr>
-          <th>WH Code</th>
-          <th>Bill From</th>
-          <th>Item Name</th>
-          <th>COR No.</th>
-          <th>Bill To</th>
-          <th style="text-align: right;">Qty.</th>
-          <th style="text-align: right;">Weight (MT)</th>
-          <th>Month</th>
-          <th>Days</th>
-          <th style="text-align: right;">Rate Per</th>
-          <th style="text-align: right;">Storage Chg/Month</th>
-          <th style="text-align: right;">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${lineItemsHTML}
-        <tr class="totals-row">
-          <td colspan="5" style="text-align: right; padding: 10px;"><strong>TOTAL</strong></td>
-          <td style="text-align: right; padding: 10px;">${totalQty}</td>
-          <td style="text-align: right; padding: 10px;">${formatNumber(totalWeight, 3)}</td>
-          <td colspan="4"></td>
-          <td style="text-align: right; padding: 10px;">${formatCurrency(data.financial.basicTotal, false)}</td>
-        </tr>
-      </tbody>
-    </table>
+
+    <!-- Summary Section: Only one line -->
+    <div style="padding: 30px 0 20px 0;">
+      <div style="font-size: 1.2em; margin-bottom: 10px;">
+        Storage charge for <strong>${monthName} ${commodityNames}</strong>: <span style="font-weight:bold; color:#28a745;">${formatCurrency(totalAmount, false)}</span>
+      </div>
+      <div style="font-size: 1.1em; color: #555; margin-bottom: 10px;">
+        Last inventory available at end of month: <strong>${lastInventory.toFixed(2)} MT</strong>
+      </div>
+    </div>
 
     <!-- Financial Summary -->
     <div class="financial">

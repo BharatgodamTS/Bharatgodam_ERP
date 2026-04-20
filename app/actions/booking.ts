@@ -175,7 +175,8 @@ export async function createBookingWithInvoice(formData: LogisticsBookingValues)
     generatedAt: new Date(),
   };
 
-  await db.collection('invoices').insertOne(formalInvoice);
+  // DISABLED: Invoice auto-generation stopped as per user request
+  // await db.collection('invoices').insertOne(formalInvoice);
 
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/invoices');

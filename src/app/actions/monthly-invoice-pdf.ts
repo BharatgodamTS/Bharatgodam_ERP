@@ -25,6 +25,13 @@ export async function generateMonthlyInvoiceHTML(invoice: MonthlyInvoice): Promi
   const previousBalance = invoice.previousBalance || 0;
   const grandTotal = totalAmount + previousBalance;
 
+  // Find all unique commodity names from periods (as per commodity master)
+  const commodityNames = Array.from(new Set((invoice.periods || []).map(p => p.commodityName))).join(', ');
+  // Calculate total rent for the month
+  const totalRent = invoice.periods.reduce((sum, p) => sum + (p.rentTotal || 0), 0);
+  // Find last inventory available at end of month (assume last period's quantityMT)
+  const lastInventory = invoice.periods.length > 0 ? invoice.periods[invoice.periods.length - 1].quantityMT : 0;
+
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -80,34 +87,17 @@ export async function generateMonthlyInvoiceHTML(invoice: MonthlyInvoice): Promi
         .detail-value {
             color: #333;
         }
-        .periods-section {
+        .summary-section {
             padding: 30px;
         }
-        .section-title {
-            font-size: 1.5em;
-            color: #333;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
+        .summary-line {
+            font-size: 1.2em;
+            margin-bottom: 10px;
         }
-        .periods-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        .periods-table th,
-        .periods-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        .periods-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-        .periods-table tr:hover {
-            background-color: #f8f9fa;
+        .inventory-line {
+            font-size: 1.1em;
+            color: #555;
+            margin-bottom: 10px;
         }
         .total-section {
             background: #f8f9fa;
@@ -188,33 +178,14 @@ export async function generateMonthlyInvoiceHTML(invoice: MonthlyInvoice): Promi
             </div>
         </div>
 
-        <!-- Billing Periods -->
-        <div class="periods-section">
-            <h2 class="section-title">Storage Billing Details</h2>
-            <table class="periods-table">
-                <thead>
-                    <tr>
-                        <th>Commodity</th>
-                        <th>Period Start</th>
-                        <th>Period End</th>
-                        <th>Quantity (MT)</th>
-                        <th>Days</th>
-                        <th>Amount (₹)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${invoice.periods.map(period => `
-                        <tr>
-                            <td>${period.commodityName}</td>
-                            <td>${new Date(period.startDate).toLocaleDateString()}</td>
-                            <td>${new Date(period.endDate).toLocaleDateString()}</td>
-                            <td>${period.quantityMT.toFixed(2)}</td>
-                            <td>${period.daysTotal}</td>
-                            <td class="amount">₹${period.rentTotal.toLocaleString('en-IN')}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+        <!-- Summary Section: Only one line -->
+        <div class="summary-section">
+            <div class="summary-line">
+                Storage charge for <strong>${commodityNames}</strong>: <span class="amount">₹${totalRent.toLocaleString('en-IN')}</span>
+            </div>
+            <div class="inventory-line">
+                Last inventory available at end of month: <strong>${lastInventory.toFixed(2)} MT</strong>
+            </div>
         </div>
 
         <!-- Total Section -->

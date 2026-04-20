@@ -146,99 +146,27 @@ export default function InvoiceReportPage() {
 
     setIsDownloading(true);
     try {
-      const invoiceMonth = invoiceData.master.invoiceMonth; // YYYY-MM format
-      const filename = `Invoice_${filters.clientId}_${invoiceMonth}.pdf`;
-
-      // Build HTML for invoice
-      const html = `
-        <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              .header { background: #f3f4f6; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-              .summary { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-              .summary-item { background: #fff; border: 1px solid #e5e7eb; padding: 15px; border-radius: 6px; }
-              .summary-item p { margin: 0; }
-              .label { color: #6b7280; font-size: 12px; text-transform: uppercase; }
-              .value { font-weight: bold; font-size: 14px; color: #1f2937; margin-top: 5px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th { background: #f3f4f6; padding: 12px; text-align: left; border-bottom: 2px solid #d1d5db; }
-              td { padding: 12px; border-bottom: 1px solid #e5e7eb; }
-              .total { font-weight: bold; background: #f3f4f6; }
-            </style>
-          </head>
-          <body>
-            <h1>MONTHLY INVOICE</h1>
-            <div class="header">
-              <h2>Invoice Month: ${invoiceData.master.invoiceMonth}</h2>
-            </div>
-            <div class="summary">
-              <div class="summary-item">
-                <p class="label">Total Amount</p>
-                <p class="value">₹${invoiceData.master.totalAmount.toLocaleString()}</p>
-              </div>
-              <div class="summary-item">
-                <p class="label">Paid Amount</p>
-                <p class="value">₹${(invoiceData.master.paidAmount || 0).toLocaleString()}</p>
-              </div>
-              <div class="summary-item">
-                <p class="label">Due Date</p>
-                <p class="value">${invoiceData.master.dueDate}</p>
-              </div>
-              <div class="summary-item">
-                <p class="label">Status</p>
-                <p class="value">${invoiceData.master.status}</p>
-              </div>
-            </div>
-            <h3>Billing Breakdown</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Commodity</th>
-                  <th>Period</th>
-                  <th>Days</th>
-                  <th>Qty (MT)</th>
-                  <th>Rate (₹/MT/Day)</th>
-                  <th>Total Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${invoiceData.lineItems.map(item => `
-                  <tr>
-                    <td>${item.commodityId.toString().substring(0, 10)}</td>
-                    <td>${item.periodStart} to ${item.periodEnd}</td>
-                    <td>${item.daysOccupied}</td>
-                    <td>${item.averageQuantityMT}</td>
-                    <td>₹${item.ratePerMTPerDay}</td>
-                    <td>₹${item.totalAmount.toLocaleString()}</td>
-                  </tr>
-                `).join('')}
-                <tr class="total">
-                  <td colspan="5">TOTAL</td>
-                  <td>₹${invoiceData.master.totalAmount.toLocaleString()}</td>
-                </tr>
-              </tbody>
-            </table>
-          </body>
-        </html>
-      `;
-
-      // Use html2pdf to generate PDF
-      const html2pdfModule = await import('html2pdf.js');
-      const html2pdf = html2pdfModule.default ?? html2pdfModule;
-
-      const element = document.createElement('div');
-      element.innerHTML = html;
-
-      const options = {
-        margin: 10,
-        filename: filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      };
-
-      await html2pdf().set(options).from(element).save();
+      // Use the backend endpoint to fetch the PDF (summary format)
+      const invoiceId = invoiceData.master._id;
+      if (!invoiceId) {
+        toast.error('Invoice ID not found');
+        setIsDownloading(false);
+        return;
+      }
+      const response = await fetch(`/api/invoice/download/${invoiceId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch invoice PDF');
+      }
+      const blob = await response.blob();
+      // Create a download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice_${invoiceId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
       toast.success('Invoice PDF downloaded successfully!');
     } catch (error) {
       console.error('PDF download error:', error);

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Download, FileText, Loader2, Calendar, Building2, Package, BookOpen } from 'lucide-react';
 import { getClientOptions, getClientInvoicesByClientId, getFilteredBookings, getWarehouseOptions, getCommodityOptions, recordPayment } from '@/app/actions/reports';
+import { getClientMonthlyLedger } from '@/app/actions/ledger';
 import { generateMonthlyInvoiceHTML } from '@/app/actions/monthly-invoice-pdf';
 import { toast } from 'react-hot-toast';
 
@@ -168,38 +169,44 @@ export default function ClientInvoicesPage() {
   const loadInvoices = async (clientId: string, warehouseId: string, month: string) => {
     setLoading(true);
     try {
-      // Use existing invoice data instead of generating new ones
-      const result = await getClientInvoicesByClientId(clientId);
+      const result = await getClientMonthlyLedger(clientId, month, warehouseId || undefined);
       if (result.success && result.data) {
-        // Filter by warehouse and month if specified
-        let filteredInvoices = result.data;
-        if (warehouseId && warehouseId !== 'ALL') {
-          filteredInvoices = filteredInvoices.filter((inv: any) => inv.warehouseId === warehouseId);
-        }
-        if (month) {
-          filteredInvoices = filteredInvoices.filter((inv: any) => inv.invoiceMonth === month);
-        }
+        const clientResult = await getClientOptions();
+        const warehouseResult = await getWarehouseOptions();
+        const client = clientResult.find((c: any) => c.value === clientId);
+        const warehouse = warehouseResult.find((w: any) => w.value === warehouseId);
 
-        // Transform to match MonthlyInvoice interface
-        const transformedInvoices: MonthlyInvoice[] = filteredInvoices.map((inv: any) => ({
-          bookingId: inv.id || '',
-          clientName: inv.customerName || '',
-          month: inv.invoiceMonth?.slice(5, 7) || '',
-          year: parseInt(inv.invoiceMonth?.slice(0, 4) || '2026'),
-          periods: [], // Not available in current invoice data
-          warehouseId: inv.warehouseId,
-          warehouseName: inv.warehouseName,
-          totalRent: inv.totalAmount || 0,
-          invoiceDate: inv.generatedAt || new Date().toISOString(),
-          invoiceId: inv.id
+        const transformedInvoices: MonthlyInvoice[] = result.data.months.map((invoice: any) => ({
+          bookingId: clientId,
+          clientName: client?.label || result.data.clientName || '',
+          month: invoice.month.split('-')[1].padStart(2, '0'),
+          year: parseInt(invoice.month.split('-')[0]),
+          periods: invoice.rows.map((period: any) => ({
+            startDate: period.fromDate,
+            endDate: period.toDate,
+            quantityMT: Number(period.qty ?? 0),
+            daysTotal: Number(period.days ?? 0),
+            rentTotal: Number(period.rent ?? 0),
+            status: period.status || 'COMPLETED',
+            commodityName: period.commodity || '',
+          })),
+          warehouseId: warehouseId || undefined,
+          warehouseName: warehouse?.label || '',
+          totalRent: Number(invoice.summary.totalRent ?? 0),
+          previousBalance: Number(invoice.summary.previousBalance ?? 0),
+          paymentsReceived: Number(invoice.summary.payments ?? 0),
+          outstandingBalance: Number(invoice.summary.outstanding ?? 0),
+          invoiceDate: new Date().toISOString().split('T')[0],
+          invoiceId: `${clientId}-${invoice.month}`,
         }));
 
         setInvoices(transformedInvoices);
       } else {
+        toast.error(result.message || 'Failed to load invoices');
         setInvoices([]);
       }
     } catch (error) {
-      console.error('Error loading invoices:', error);
+      console.error('Failed to load invoices:', error);
       toast.error('Failed to load invoices');
       setInvoices([]);
     } finally {

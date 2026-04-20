@@ -242,7 +242,6 @@ export default function BookingForm({ commodities }: BookingFormProps) {
 
       // Success! Show confirmation with invoice info
       toast.success(`✓ Booking S.No #${result.serialNo} saved! Invoice created.`);
-      console.log(`[Form] Invoice generated: ${result.invoiceId}`);
       
       reset({ storageDays: 1, bags: 0, palaBags: 0, direction: 'INWARD' });
       setStockError(null);

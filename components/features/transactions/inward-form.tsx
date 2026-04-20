@@ -158,10 +158,6 @@ export default function InwardForm({ clients, commodities, warehouses, onSuccess
 
         if (res.success) {
           toast.success('Inward transaction recorded');
-          
-          if (res.invoiceId) {
-            window.open(`/api/invoice/download/${res.invoiceId}`, '_blank');
-          }
 
           setCalculations(null); // Explicitly clear live charges display
           

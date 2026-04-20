@@ -145,52 +145,82 @@ export default function TransactionsReport({ transactions, isLoading = false }: 
     {
       accessorKey: 'clientName',
       header: 'Client',
-      cell: ({ row }) => <span className="font-semibold">{row.getValue('clientName')}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('clientName');
+        if (typeof value === 'object' || value === undefined || value === null) return <span className="font-semibold">N.A.</span>;
+        return <span className="font-semibold">{String(value)}</span>;
+      },
     },
     {
       accessorKey: 'commodityName',
       header: 'Commodity',
-      cell: ({ row }) => <span className="text-indigo-600 font-medium">{row.getValue('commodityName')}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('commodityName');
+        if (typeof value === 'object' || value === undefined || value === null) return <span className="text-indigo-600 font-medium">N.A.</span>;
+        return <span className="text-indigo-600 font-medium">{String(value)}</span>;
+      },
     },
     {
       accessorKey: 'warehouseName',
       header: 'Warehouse',
-      cell: ({ row }) => <span className="text-slate-700">{row.getValue('warehouseName')}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('warehouseName');
+        if (typeof value === 'object' || value === undefined || value === null) return <span className="text-slate-700">N.A.</span>;
+        return <span className="text-slate-700">{String(value)}</span>;
+      },
     },
     {
       accessorKey: 'quantityMT',
       header: 'Qty (MT)',
-      cell: ({ row }) => <span className="font-bold">{(row.getValue('quantityMT') as number).toFixed(2)}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('quantityMT');
+        if (typeof value !== 'number') return null;
+        return <span className="font-bold">{value.toFixed(2)}</span>;
+      },
     },
     {
       accessorKey: 'bagsCount',
       header: 'Bags',
       cell: ({ row }) => {
         const value = row.getValue('bagsCount');
-        return <span>{value != null ? value : 'N.A.'}</span>;
+        if (typeof value === 'object' || value === undefined || value === null) return <span>N.A.</span>;
+        return <span>{String(value)}</span>;
       },
     },
     {
       accessorKey: 'gatePass',
       header: 'Gate Pass',
-      cell: ({ row }) => <span className="text-slate-600">{row.getValue('gatePass') || '—'}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('gatePass');
+        if (typeof value === 'object' || value === undefined || value === null) return <span className="text-slate-600">—</span>;
+        return <span className="text-slate-600">{String(value) || '—'}</span>;
+      },
     },
     {
       accessorKey: 'stackNo',
       header: 'Stack No',
-      cell: ({ row }) => <span>{row.getValue('stackNo') || '—'}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('stackNo');
+        if (typeof value === 'object' || value === undefined || value === null) return <span>—</span>;
+        return <span>{String(value) || '—'}</span>;
+      },
     },
     {
       accessorKey: 'lotNo',
       header: 'Lot No',
-      cell: ({ row }) => <span>{row.getValue('lotNo') || '—'}</span>,
+      cell: ({ row }) => {
+        const value = row.getValue('lotNo');
+        if (typeof value === 'object' || value === undefined || value === null) return <span>—</span>;
+        return <span>{String(value) || '—'}</span>;
+      },
     },
     {
       accessorKey: 'createdAt',
       header: 'Created',
       cell: ({ row }) => {
-        const createdAt = row.getValue('createdAt') as string;
-        return new Date(createdAt).toLocaleDateString('en-IN');
+        const createdAt = row.getValue('createdAt');
+        if (!createdAt) return null;
+        return new Date(createdAt as string).toLocaleDateString('en-IN');
       },
     },
   ], []);
@@ -279,7 +309,7 @@ export default function TransactionsReport({ transactions, isLoading = false }: 
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Client</label>
-            <Select value={clientFilter} onValueChange={setClientFilter} className="w-full" disabled={isLoadingClients}>
+            <Select value={clientFilter} onValueChange={setClientFilter} disabled={isLoadingClients}>
               <SelectTrigger className="font-semibold text-slate-700 w-full">
                 <SelectValue placeholder="All Clients" />
               </SelectTrigger>
@@ -295,7 +325,7 @@ export default function TransactionsReport({ transactions, isLoading = false }: 
 
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Warehouse</label>
-            <Select value={warehouseFilter} onValueChange={setWarehouseFilter} className="w-full" disabled={isLoadingWarehouses}>
+            <Select value={warehouseFilter} onValueChange={setWarehouseFilter} disabled={isLoadingWarehouses}>
               <SelectTrigger className="font-semibold text-slate-700 w-full">
                 <SelectValue placeholder="All Warehouses" />
               </SelectTrigger>

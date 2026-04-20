@@ -8,15 +8,41 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, ChevronRight, ArrowLeft, Landmark } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+type ClientBreakdown = {
+  clientId: string;
+  clientName: string;
+  outstanding: number;
+  received: number;
+  balance: number;
+};
+
+type LedgerSummary = {
+  totalOutstanding: number;
+  totalReceived: number;
+  clientBreakdown: ClientBreakdown[];
+};
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 export default function LedgerDashboard() {
   const [clients, setClients] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [summary, setSummary] = useState<LedgerSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   useEffect(() => {
     loadClients();
+    loadSummary();
   }, []);
 
   const loadClients = async () => {
@@ -24,6 +50,20 @@ export default function LedgerDashboard() {
     const data = await getClients();
     setClients(data);
     setLoading(false);
+  };
+
+  const loadSummary = async () => {
+    setSummaryLoading(true);
+    try {
+      const response = await fetch('/api/ledger/client-breakdown');
+      const data: LedgerSummary = await response.json();
+      setSummary(data);
+    } catch (error) {
+      console.error('Failed to load ledger summary:', error);
+      setSummary({ totalOutstanding: 0, totalReceived: 0, clientBreakdown: [] });
+    } finally {
+      setSummaryLoading(false);
+    }
   };
 
   const handleDrillDown = (client: any) => {
@@ -54,9 +94,63 @@ export default function LedgerDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Financial Ledger</h1>
-        <p className="text-slate-500">View consolidated balances and drill down into individual transaction math.</p>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight">Financial Ledger</h1>
+          <p className="text-slate-500">View consolidated balances and drill down into individual transaction math.</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card className="border border-slate-200 bg-slate-50">
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Total Outstanding</p>
+              <p className="mt-4 text-3xl font-semibold text-slate-900">
+                {summaryLoading ? 'Loading...' : formatCurrency(summary?.totalOutstanding ?? 0)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border border-slate-200 bg-slate-50">
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Total Received</p>
+              <p className="mt-4 text-3xl font-semibold text-slate-900">
+                {summaryLoading ? 'Loading...' : formatCurrency(summary?.totalReceived ?? 0)}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Client Breakdown Table */}
+        {summary && summary.clientBreakdown.length > 0 && (
+          <Card className="border border-slate-200">
+            <CardContent className="p-5">
+              <h2 className="text-lg font-bold text-slate-900 mb-4">Client Summary</h2>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Client Name</TableHead>
+                      <TableHead className="text-right">Outstanding</TableHead>
+                      <TableHead className="text-right">Received</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {summary.clientBreakdown.map((client) => (
+                      <TableRow key={client.clientId} className="hover:bg-slate-50">
+                        <TableCell className="font-medium text-slate-900">{client.clientName}</TableCell>
+                        <TableCell className="text-right text-slate-900">{formatCurrency(client.outstanding)}</TableCell>
+                        <TableCell className="text-right text-emerald-600 font-medium">{formatCurrency(client.received)}</TableCell>
+                        <TableCell className={`text-right font-semibold ${client.balance > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                          {formatCurrency(client.balance)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="flex items-center gap-4 bg-white p-4 rounded-xl border shadow-sm">

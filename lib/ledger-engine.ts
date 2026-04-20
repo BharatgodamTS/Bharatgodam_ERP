@@ -235,13 +235,15 @@ export function calculateLedger(
     }
   }
 
-  // Final period: from last transaction to today
+  // Final period: from last transaction to yesterday's as-of date
   if (sortedTransactions.length > 0) {
     const lastTxnDate = parseDate(sortedTransactions[sortedTransactions.length - 1].date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const asOfDate = new Date(now);
+    asOfDate.setDate(asOfDate.getDate() - 1);
 
-    const daysDiff = calculateDaysDifference(lastTxnDate, today);
+    const daysDiff = calculateDaysDifference(lastTxnDate, asOfDate);
     const totalQuantity = Array.from(inventory.values()).reduce((sum, qty) => sum + qty, 0);
     if (daysDiff > 0 && totalQuantity > 0) {
       // Calculate rent for each commodity
@@ -255,7 +257,7 @@ export function calculateLedger(
       ledgerSteps.push({
         stepNo,
         startDate: formatDateToString(sortedTransactions[sortedTransactions.length - 1].date),
-        endDate: today.toISOString().split('T')[0],
+        endDate: formatDateToString(asOfDate),
         daysDifference: daysDiff,
         quantityMT: totalQuantity,
         commodity: sortedTransactions[sortedTransactions.length - 1].commodityName,
@@ -274,6 +276,10 @@ export function calculateLedger(
   // Balance = Rent Owed - Payments Received + Outstanding Invoices
   const balance = roundCurrency(totalRent + outstandingInvoices - totalPaid);
 
+  const calculationDate = new Date();
+  calculationDate.setHours(0, 0, 0, 0);
+  calculationDate.setDate(calculationDate.getDate() - 1);
+
   return {
     clientName,
     ledgerSteps,
@@ -281,7 +287,7 @@ export function calculateLedger(
     totalPaid,
     balance,
     paymentHistory: sortedPayments,
-    calculationDate: new Date().toISOString().split('T')[0],
+    calculationDate: formatDateToString(calculationDate),
   };
 }
 

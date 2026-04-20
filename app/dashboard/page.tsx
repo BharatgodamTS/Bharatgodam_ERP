@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { Box, Layers, DollarSign, Clock3, TrendingUp } from 'lucide-react';
+import { Box, Layers, DollarSign, Clock3 } from 'lucide-react';
 import { getDb } from '@/lib/mongodb';
-import BookingTrendChart from '@/components/features/dashboard/booking-trend-chart';
+import TransactionsReportWrapper from '@/components/features/reports/transactions-report-wrapper';
 import WarehouseInventory from '@/components/features/warehouse/warehouse-inventory';
 
 function formatCurrency(value: number) {
@@ -38,10 +38,16 @@ export default async function DashboardPage() {
 
   const db = await getDb();
   const now = new Date();
-  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const currentMonthStartStr = currentMonthStart.toISOString().slice(0, 10);
-  const currentMonthEndStr = currentMonthEnd.toISOString().slice(0, 10);
+  const currentYearStart = new Date(now.getFullYear(), 0, 1);
+  const currentYearEnd = new Date(now.getFullYear() + 1, 0, 1);
+  const previousYearStart = new Date(now.getFullYear() - 1, 0, 1);
+  const previousYearEnd = new Date(now.getFullYear(), 0, 1);
+
+  const transactionMatch: Record<string, unknown> = {};
+  const currentYearStartStr = currentYearStart.toISOString().slice(0, 10);
+  const currentYearEndStr = currentYearEnd.toISOString().slice(0, 10);
+  const previousYearStartStr = previousYearStart.toISOString().slice(0, 10);
+  const previousYearEndStr = previousYearEnd.toISOString().slice(0, 10);
 
   const [transactionAnalytics] = await db.collection('transactions').aggregate([
     {
@@ -58,6 +64,9 @@ export default async function DashboardPage() {
           ]
         }
       }
+    },
+    {
+      $match: Object.keys(transactionMatch).length ? transactionMatch : {}
     },
     {
       $facet: {
@@ -94,18 +103,90 @@ export default async function DashboardPage() {
             }
           }
         ],
-        dailyTrend: [
+        quarterTrendCurrent: [
           {
             $match: {
               dateString: {
-                $gte: currentMonthStartStr,
-                $lt: currentMonthEndStr
+                $gte: currentYearStartStr,
+                $lt: currentYearEndStr
               }
             }
           },
           {
             $group: {
-              _id: '$dateString',
+              _id: {
+                $toString: {
+                  $ceil: {
+                    $divide: [
+                      {
+                        $month: {
+                          $cond: [
+                            { $eq: [{ $type: '$date' }, 'date'] },
+                            '$date',
+                            { $dateFromString: { dateString: '$date' } }
+                          ]
+                        }
+                      },
+                      3
+                    ]
+                  }
+                }
+              },
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: { $concat: ['Q', '$_id'] },
+              count: 1
+            }
+          },
+          { $sort: { _id: 1 } }
+        ],
+        quarterTrendPrevious: [
+          {
+            $match: {
+              dateString: {
+                $gte: previousYearStartStr,
+                $lt: previousYearEndStr
+              }
+            }
+          },
+          {
+            $group: {
+              _id: {
+                $toString: {
+                  $ceil: {
+                    $divide: [
+                      {
+                        $month: {
+                          $cond: [
+                            { $eq: [{ $type: '$date' }, 'date'] },
+                            '$date',
+                            { $dateFromString: { dateString: '$date' } }
+                          ]
+                        }
+                      },
+                      3
+                    ]
+                  }
+                }
+              },
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: { $concat: ['Q', '$_id'] },
+              count: 1
+            }
+          },
+          { $sort: { _id: 1 } }
+        ],
+        directionBreakdown: [
+          {
+            $group: {
+              _id: '$direction',
               count: { $sum: 1 }
             }
           },
@@ -140,53 +221,49 @@ export default async function DashboardPage() {
     }
   ]).toArray();
 
-  const [invoiceAggregation, activeWarehouseCount, activeClientCount, invoiceCount, ledgerEntryCount] = await Promise.all([
-    db.collection('invoices').aggregate([
+  const [invoiceReceivablesResult, paymentsReceivedResult, activeWarehouseCount, activeClientCount, invoiceCount, ledgerEntryCount] = await Promise.all([
+    db.collection('invoice_master').aggregate([
       {
-        $group: {
-          _id: null,
-          totalRevenuePaise: {
-            $sum: {
-              $round: [{ $multiply: [{ $ifNull: ['$paidAmount', 0] }, 100] }, 0]
-            }
+        $project: {
+          totalAmount: 1,
+          paidAmount: { $ifNull: ['$paidAmount', 0] },
+          pendingAmount: {
+            $max: [
+              { $subtract: ['$totalAmount', { $ifNull: ['$paidAmount', 0] }] },
+              0
+            ]
           },
-          totalPendingPaise: {
-            $sum: {
-              $round: [{ $multiply: [{ $subtract: [{ $ifNull: ['$totalAmount', 0] }, { $ifNull: ['$paidAmount', 0] }] }, 100] }, 0]
-            }
-          }
+          status: 1
         }
-      }
+      },
+      { $match: { status: { $ne: 'PAID' }, pendingAmount: { $gt: 0 } } },
+      { $group: { _id: null, totalPendingReceivables: { $sum: '$pendingAmount' } } }
+    ]).toArray(),
+    db.collection('payments').aggregate([
+      { $match: { status: 'COMPLETED' } },
+      { $group: { _id: null, totalRevenue: { $sum: '$amount' } } }
     ]).toArray(),
     db.collection('warehouses').countDocuments({ status: 'ACTIVE' }),
     db.collection('clients').countDocuments({ status: 'ACTIVE' }),
-    db.collection('invoices').countDocuments(),
+    db.collection('invoice_master').countDocuments(),
     db.collection('ledger_entries').countDocuments()
   ]);
 
   const totalTransactions = transactionAnalytics?.totals?.[0]?.totalTransactions ?? 0;
   const activeInventory = transactionAnalytics?.activeInventory?.[0]?.netInventory ?? 0;
-  const dailyTrend = transactionAnalytics?.dailyTrend ?? [];
+  const inwardTransactions = transactionAnalytics?.directionBreakdown?.find((item: any) => item._id === 'INWARD')?.count ?? 0;
+  const outwardTransactions = transactionAnalytics?.directionBreakdown?.find((item: any) => item._id === 'OUTWARD')?.count ?? 0;
   const commodityBreakdown = transactionAnalytics?.commodityBreakdown ?? [];
 
-  const totalRevenue = (invoiceAggregation?.[0]?.totalRevenuePaise ?? 0) / 100;
-  const pendingReceivables = (invoiceAggregation?.[0]?.totalPendingPaise ?? 0) / 100;
+  const totalRevenue = paymentsReceivedResult[0]?.totalRevenue ?? 0;
+  const pendingReceivables = invoiceReceivablesResult[0]?.totalPendingReceivables ?? 0;
 
   const masterLinks = [
     { name: 'Active Warehouses', value: activeWarehouseCount, href: '/dashboard/warehouses' },
     { name: 'Active Clients', value: activeClientCount, href: '/dashboard/clients' },
-    { name: 'Invoices', value: invoiceCount, href: '/dashboard/invoices' },
+    { name: 'Invoices', value: invoiceCount, href: '/dashboard/client-invoices' },
     { name: 'Ledger Entries', value: ledgerEntryCount, href: '/dashboard/ledger' }
   ];
-
-  const dayLabels = buildDayLabels(now);
-  const dailyData = dayLabels.map((day) => {
-    const entry = dailyTrend.find((row: any) => row._id === day.key);
-    return {
-      day: day.label,
-      bookings: entry ? entry.count : 0,
-    };
-  });
 
   const stats = [
     {
@@ -207,6 +284,7 @@ export default async function DashboardPage() {
       name: 'Total Revenue',
       value: formatCurrency(totalRevenue),
       icon: DollarSign,
+      href: '/dashboard/revenue',
       color: 'text-emerald-600',
       bg: 'bg-emerald-100',
     },
@@ -231,8 +309,8 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
-          return (
-            <div key={stat.name} className="overflow-hidden rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+          const cardContent = (
+            <div className="overflow-hidden rounded-3xl bg-white p-6 shadow-sm border border-slate-100 hover:border-slate-300 transition">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium text-slate-500">{stat.name}</p>
@@ -243,6 +321,14 @@ export default async function DashboardPage() {
                 </div>
               </div>
             </div>
+          );
+
+          return stat.href ? (
+            <Link key={stat.name} href={stat.href} className="block">
+              {cardContent}
+            </Link>
+          ) : (
+            <div key={stat.name}>{cardContent}</div>
           );
         })}
       </div>
@@ -258,14 +344,27 @@ export default async function DashboardPage() {
         </div>
 
         <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
-          <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Transaction Volume (Current Month)</h3>
-              <p className="text-sm text-slate-500">Daily transaction count for {new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(now)}.</p>
+              <h3 className="text-lg font-semibold text-slate-900">Transaction Report</h3>
+              <p className="text-sm text-slate-500">Live transaction report with warehouse and client filters using the standard transaction report table layout.</p>
             </div>
-            <TrendingUp className="h-5 w-5 text-slate-400" />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-3xl bg-slate-50 px-4 py-3 border border-slate-200">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Inward</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{formatNumber(inwardTransactions)}</p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 px-4 py-3 border border-slate-200">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Outward</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{formatNumber(outwardTransactions)}</p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 px-4 py-3 border border-slate-200">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Filtered Total</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{formatNumber(totalTransactions)}</p>
+              </div>
+            </div>
           </div>
-          <BookingTrendChart data={dailyData} />
+          <TransactionsReportWrapper />
         </div>
       </div>
 

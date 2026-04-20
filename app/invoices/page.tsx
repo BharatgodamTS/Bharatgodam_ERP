@@ -188,7 +188,7 @@ export default function InvoicesPage() {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                               {new Date(item.inwardDate).toLocaleDateString()}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-50ˀ0">
                               {item.outwardDate ? new Date(item.outwardDate).toLocaleDateString() : 'Ongoing'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">

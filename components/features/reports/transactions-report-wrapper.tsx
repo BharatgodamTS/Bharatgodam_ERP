@@ -170,7 +170,7 @@ export default async function TransactionsReportWrapper() {
              record.warehouseName && record.warehouseName !== 'Unknown';
     });
 
-    return <TransactionsReport transactions={combinedTransactions} />;
+    return <TransactionsReport transactions={Array.isArray(combinedTransactions) ? combinedTransactions : []} />;
   } catch (error) {
     console.error('Error fetching transactions:', error);
     return (

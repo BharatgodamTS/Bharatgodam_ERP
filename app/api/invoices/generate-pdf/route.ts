@@ -9,7 +9,9 @@ import { InvoiceData } from '@/lib/invoice/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const invoiceData: InvoiceData = await request.json();
+    const body = await request.json();
+    const invoiceData: InvoiceData = body.invoiceData || body;
+    const summary = body.summary === true;
 
     // Validate invoice data
     const validator = new InvoiceValidator();
@@ -25,8 +27,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate PDF
-    const pdfBuffer = await generateInvoicePDF(invoiceData);
+    // Generate PDF (summary or detailed)
+    const pdfBuffer = await generateInvoicePDF(invoiceData, undefined, summary);
 
     // Return PDF as response
     return new NextResponse(pdfBuffer as any, {

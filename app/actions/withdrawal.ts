@@ -99,11 +99,12 @@ export async function handleWithdrawal(bookingId: string) {
       createdBy: session.user.email
     };
 
-    const invoiceRes = await db.collection('invoices').insertOne(settlementInvoice);
+    // DISABLED: Invoice auto-generation stopped as per user request
+    // const invoiceRes = await db.collection('invoices').insertOne(settlementInvoice);
 
     return { 
       success: true, 
-      invoiceId: invoiceRes.insertedId.toString() 
+      // invoiceId: invoiceRes.insertedId.toString() 
     };
 
   } catch (error: any) {

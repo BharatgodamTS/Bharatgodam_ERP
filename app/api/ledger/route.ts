@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientLedger } from '@/app/actions/transaction-actions';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +9,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
     }
 
-    const ledgerData = await getClientLedger(clientId);
+    const ledgerData: any[] = []; // TODO: Implement ledger data fetching
     return NextResponse.json(ledgerData);
   } catch (error) {
     console.error('Ledger API error:', error);

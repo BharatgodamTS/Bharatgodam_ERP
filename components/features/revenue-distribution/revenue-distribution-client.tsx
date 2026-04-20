@@ -45,7 +45,7 @@ export default function RevenueDistributionClient({
       const params = new URLSearchParams(searchParams);
       params.set('month', month.toString());
       params.set('year', year.toString());
-      router.push(`/dashboard/revenue-distribution?${params.toString()}`);
+      router.push(`/dashboard/revenue?${params.toString()}`);
     });
   };
 
