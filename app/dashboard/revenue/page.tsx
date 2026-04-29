@@ -72,7 +72,7 @@ export default function RevenueDashboard() {
 
   const revenueRows = warehouseRevenue.flatMap((item: any) =>
     Object.entries(item.monthlyCharges)
-      .map(([monthKey, rent]: [string, number]) => ({
+      .map(([monthKey, rent]: [string, any]) => ({
         warehouseId: item.warehouseId,
         warehouseName: item.warehouseName,
         monthKey,
