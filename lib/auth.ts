@@ -14,37 +14,27 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         try {
           if (!credentials?.email || !credentials?.password) {
-            throw new Error('Email and password are required');
+            return null;
           }
-
-          console.log("👉 Login attempt:", credentials.email);
 
           const db = await getDb();
 
-          const user = await db.collection('users').findOne({ email: credentials.email });
-
-          console.log("👉 User from DB:", user);
+          const user = await db.collection('users').findOne({
+            email: credentials.email.trim().toLowerCase()
+          });
 
           if (!user) {
-            throw new Error('No user found with this email');
+            return null;
           }
 
-          // Check if user is active
-          console.log("👉 User status:", user.status);
-
-          if (user.status === 'INACTIVE') {
-            throw new Error('Your account has been deactivated.');
+          if (user.status !== 'ACTIVE') {
+            return null;
           }
-
-          console.log("👉 Entered password:", credentials.password);
-          console.log("👉 Stored password:", user.password);
 
           const isValid = await bcrypt.compare(credentials.password, user.password);
 
-          console.log("👉 Password match:", isValid);
-
           if (!isValid) {
-            throw new Error('Invalid password');
+            return null;
           }
 
           return {
@@ -54,8 +44,8 @@ export const authOptions: NextAuthOptions = {
           };
 
         } catch (error) {
-          console.error("❌ AUTH ERROR:", error);
-          throw error;
+          console.error("AUTH ERROR:", error);
+          return null; // ⚠️ IMPORTANT
         }
       },
     }),
