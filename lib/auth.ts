@@ -41,7 +41,7 @@ export const authOptions: NextAuthOptions = {
           if (!isValid) {
             return null; // IMPORTANT (don’t throw)
           }
-
+          console.log("User found:", user)
           return {
             id: user._id.toString(),
             email: user.email,
