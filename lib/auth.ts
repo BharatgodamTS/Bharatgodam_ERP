@@ -12,33 +12,51 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password are required');
+        try {
+          if (!credentials?.email || !credentials?.password) {
+            throw new Error('Email and password are required');
+          }
+
+          console.log("👉 Login attempt:", credentials.email);
+
+          const db = await getDb();
+
+          const user = await db.collection('users').findOne({ email: credentials.email });
+
+          console.log("👉 User from DB:", user);
+
+          if (!user) {
+            throw new Error('No user found with this email');
+          }
+
+          // Check if user is active
+          console.log("👉 User status:", user.status);
+
+          if (user.status === 'INACTIVE') {
+            throw new Error('Your account has been deactivated.');
+          }
+
+          console.log("👉 Entered password:", credentials.password);
+          console.log("👉 Stored password:", user.password);
+
+          const isValid = await bcrypt.compare(credentials.password, user.password);
+
+          console.log("👉 Password match:", isValid);
+
+          if (!isValid) {
+            throw new Error('Invalid password');
+          }
+
+          return {
+            id: user._id.toString(),
+            email: user.email,
+            role: user.role,
+          };
+
+        } catch (error) {
+          console.error("❌ AUTH ERROR:", error);
+          throw error;
         }
-
-        const db = await getDb();
-        const user = await db.collection('users').findOne({ email: credentials.email });
-
-        if (!user) {
-          throw new Error('No user found with this email');
-        }
-
-        // Check if user is active
-        if (user.status === 'INACTIVE') {
-          throw new Error('Your account has been deactivated. Please contact administrator.');
-        }
-
-        const isValid = await bcrypt.compare(credentials.password, user.password);
-
-        if (!isValid) {
-          throw new Error('Invalid password');
-        }
-
-        return {
-          id: user._id.toString(),
-          email: user.email,
-          role: user.role,
-        };
       },
     }),
   ],
