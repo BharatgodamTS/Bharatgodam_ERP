@@ -25,7 +25,7 @@ function calculateStorageDays(
     return 1;
   }
 
-  return Math.max(1, differenceInDays(to, from) + 1);
+  return Math.max(1, differenceInDays(to, from) + 2);
 }
 
 export interface Transaction {
