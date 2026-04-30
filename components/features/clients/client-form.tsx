@@ -116,9 +116,8 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
         />
       </div>
       <div className="space-y-2">
-        <label className="text-sm font-medium">GSTIN</label>
+        <label className="text-sm font-medium">GSTIN (Optional)</label>
         <Input 
-          required 
           value={formData.gstNumber} 
           onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value })} 
           placeholder="22AAAAA0000A1Z5"

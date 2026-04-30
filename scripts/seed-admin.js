@@ -40,6 +40,7 @@ async function ensureAdminUser() {
         $set: {
           password: hashedPassword,
           role: 'ADMIN',
+          status: 'ACTIVE',
           updatedAt: now,
         },
       };
@@ -51,6 +52,7 @@ async function ensureAdminUser() {
         email: adminEmailValue,
         password: hashedPassword,
         role: 'ADMIN',
+        status: 'ACTIVE',
         createdAt: now,
         updatedAt: now,
       });

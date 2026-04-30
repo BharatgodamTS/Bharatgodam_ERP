@@ -26,7 +26,7 @@ const ClientSchema: Schema = new Schema(
     mobile: { type: String, required: true },
     panNumber: { type: String, required: true },
     aadharNumber: { type: String, required: true },
-    gstNumber: { type: String, required: true },
+    gstNumber: { type: String, required: false },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
     userEmail: { type: String, required: false },
   },

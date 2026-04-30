@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { generateMonthlyInvoicePDF } from '@/app/actions/monthly-invoice-pdf';
+import { generateMonthlyInvoiceHTML } from '@/app/actions/monthly-invoice-pdf';
 import { getClientMonthlyLedger } from '@/app/actions/ledger';
 import { requireSession, getTenantFilterForMongo } from '@/lib/ownership';
 
@@ -167,6 +167,7 @@ async function buildInvoiceFromLedger(db: any, id: string, warehouseId?: string,
     totalAmount: Number(item.rent ?? 0),
     periodStart: item.fromDate || '',
     periodEnd: item.toDate || '',
+    itemStatus: item.status || 'COMPLETED',
     createdAt: new Date(),
   }));
 
@@ -245,7 +246,7 @@ export async function GET(
           quantityMT: Number(item.averageQuantityMT ?? 0),
           daysTotal: Number(item.daysOccupied ?? 0),
           rentTotal: Number(item.totalAmount ?? 0),
-          status: invoiceMaster.status || 'DRAFT',
+          status: item.itemStatus || 'COMPLETED',
           commodityName: item.commodityName || '',
         })),
         warehouseId: invoiceMaster.warehouseId?.toString(),
@@ -263,13 +264,13 @@ export async function GET(
       }
     }
 
-    const pdfBuffer = await generateMonthlyInvoicePDF(monthlyInvoice);
+    const htmlContent = await generateMonthlyInvoiceHTML(monthlyInvoice);
+    const printableHtml = htmlContent.replace('</body>', '<script>window.onload = function() { window.print(); }</script></body>');
 
-    return new NextResponse(pdfBuffer as any, {
+    return new NextResponse(printableHtml, {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${monthlyInvoice.bookingId.replace(/\//g, '_')}.pdf"`,
+        'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache, no-store',
       },
     });

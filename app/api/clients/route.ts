@@ -88,10 +88,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, type, address, mobile, panNumber, aadharNumber, gstNumber, otherDetails } = body;
 
-    if (!name || !type || !address || !mobile || !panNumber || !aadharNumber || !gstNumber) {
+    if (!name || !type || !address || !mobile || !panNumber || !aadharNumber) {
       return NextResponse.json({
         success: false,
-        message: 'Missing required fields: name, type, address, mobile, panNumber, aadharNumber, gstNumber'
+        message: 'Missing required fields: name, type, address, mobile, panNumber, aadharNumber'
       }, { status: 400 });
     }
 

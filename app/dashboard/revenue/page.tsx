@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, TrendingUp, HandCoins, Filter } from 'lucide-react';
+import { Wallet, TrendingUp, HandCoins, Filter, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -86,6 +86,29 @@ export default function RevenueDashboard() {
     return a.monthKey.localeCompare(b.monthKey);
   });
 
+  const downloadCSV = () => {
+    if (!revenueRows.length) return;
+    
+    const headers = ['Warehouse Name', 'Month', 'Rent (₹)', 'Owner Share (60%)', 'Platform Share (40%)'];
+    const csvContent = [
+      headers.join(','),
+      ...revenueRows.map((row: any) => 
+        `"${row.warehouseName}","${row.monthLabel}",${row.rent},${row.ownerShare},${row.platformShare}`
+      )
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateStr = new Date().toISOString().split('T')[0];
+    const warehouseName = selectedWarehouse === 'ALL' ? 'All_Warehouses' : revenueRows[0]?.warehouseName.replace(/\s+/g, '_') || 'Warehouse';
+    link.download = `Revenue_Split_${warehouseName}_${dateStr}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-2">
@@ -155,6 +178,9 @@ export default function RevenueDashboard() {
                 </SelectContent>
               </Select>
             </div>
+            <Button onClick={downloadCSV} variant="outline" className="flex items-center gap-2" disabled={revenueRows.length === 0}>
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">

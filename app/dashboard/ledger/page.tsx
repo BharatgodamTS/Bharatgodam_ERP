@@ -101,24 +101,7 @@ export default function LedgerDashboard() {
           <p className="text-slate-500">View consolidated balances and drill down into individual transaction math.</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card className="border border-slate-200 bg-slate-50">
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Total Outstanding</p>
-              <p className="mt-4 text-3xl font-semibold text-slate-900">
-                {summaryLoading ? 'Loading...' : formatCurrency(summary?.totalOutstanding ?? 0)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="border border-slate-200 bg-slate-50">
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Total Received</p>
-              <p className="mt-4 text-3xl font-semibold text-slate-900">
-                {summaryLoading ? 'Loading...' : formatCurrency(summary?.totalReceived ?? 0)}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+
 
         {/* Client Breakdown Table */}
         {summary && summary.clientBreakdown.length > 0 && (

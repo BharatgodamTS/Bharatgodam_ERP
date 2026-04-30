@@ -217,35 +217,12 @@ export default function ClientInvoicesPage() {
     }
   };
 
-  // Download invoice as PDF (from backend API)
+  // Open invoice as Printable HTML
   const handleDownloadInvoice = async (invoice: MonthlyInvoice) => {
     const invoiceId = invoice.invoiceId || invoice.bookingId;
     const warehouseQuery = invoice.warehouseId ? `?warehouseId=${encodeURIComponent(invoice.warehouseId)}` : '';
-    setDownloading(invoiceId);
-    try {
-      // Fetch PDF from backend API
-      const res = await fetch(`/api/invoice/download/${invoiceId}${warehouseQuery}`);
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Failed to fetch PDF: ${res.status} ${errorText}`);
-      }
-      const pdfBuffer = await res.arrayBuffer();
-      const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Invoice_${invoice.clientName.replace(/\s+/g, '_')}_${invoice.month}_${invoice.year}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      toast.success('Invoice PDF downloaded successfully');
-    } catch (error) {
-      console.error('Failed to download invoice PDF:', error);
-      toast.error('Failed to download invoice PDF');
-    } finally {
-      setDownloading(null);
-    }
+    const url = `/api/invoice/download/${invoiceId}${warehouseQuery}`;
+    window.open(url, '_blank');
   };
 
   // Record payment for invoice
@@ -574,13 +551,12 @@ export default function ClientInvoicesPage() {
                             <td className="px-4 py-2 text-right font-semibold">₹{Number(period.rentTotal || 0).toLocaleString('en-IN')}</td>
                             <td className="px-4 py-2 text-center">
                               <span
-                                className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                                  period.status === 'ACTIVE'
+                                className={`inline-block px-2 py-1 rounded text-xs font-semibold ${period.status === 'ACTIVE'
                                     ? 'bg-green-100 text-green-800'
                                     : period.status === 'PARTIAL_REMOVAL'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}
                               >
                                 {period.status}
                               </span>

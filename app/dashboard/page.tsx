@@ -2,10 +2,11 @@ import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { Box, Layers, DollarSign, Clock3 } from 'lucide-react';
+import { Box, Layers, IndianRupee, Clock3 } from 'lucide-react';
 import { getDb } from '@/lib/mongodb';
 import { getTenantFilterForMongo } from '@/lib/ownership';
 import TransactionsReportWrapper from '@/components/features/reports/transactions-report-wrapper';
+import { getClientRevenueAnalytics } from '@/app/actions/transaction-actions';
 import WarehouseInventory from '@/components/features/warehouse/warehouse-inventory';
 
 function formatCurrency(value: number) {
@@ -271,8 +272,8 @@ export default async function DashboardPage() {
       { $match: { ...tenantFilter, status: 'COMPLETED' } },
       { $group: { _id: null, totalRevenue: { $sum: '$amount' } } }
     ]).toArray(),
-    db.collection('warehouses').countDocuments({ ...tenantFilter, status: 'ACTIVE' }),
-    db.collection('clients').countDocuments({ ...tenantFilter, status: 'ACTIVE' }),
+      db.collection('warehouses').countDocuments({ ...tenantFilter }),
+      db.collection('clients').countDocuments({ ...tenantFilter }),
     db.collection('invoice_master').countDocuments({ ...tenantFilter }),
     db.collection('invoices').countDocuments({ ...tenantFilter }),
     db.collection('transactions').aggregate([
@@ -321,7 +322,8 @@ export default async function DashboardPage() {
   const outwardTransactions = transactionAnalytics?.directionBreakdown?.find((item: any) => item._id === 'OUTWARD')?.count ?? 0;
   const commodityBreakdown = transactionAnalytics?.commodityBreakdown ?? [];
 
-  const totalRevenue = paymentsReceivedResult[0]?.totalRevenue ?? 0;
+  const revenueAnalytics = await getClientRevenueAnalytics();
+  const totalRevenue = revenueAnalytics.summary.totalRevenue;
   const pendingReceivables = invoiceReceivablesResult[0]?.totalPendingReceivables ?? 0;
 
   const masterLinks = [
@@ -349,17 +351,10 @@ export default async function DashboardPage() {
     {
       name: 'Total Revenue',
       value: formatCurrency(totalRevenue),
-      icon: DollarSign,
+      icon: IndianRupee,
       href: '/dashboard/revenue',
       color: 'text-emerald-600',
       bg: 'bg-emerald-100',
-    },
-    {
-      name: 'Pending Receivables',
-      value: formatCurrency(pendingReceivables),
-      icon: Clock3,
-      color: 'text-orange-600',
-      bg: 'bg-orange-100',
     },
   ];
 
@@ -372,7 +367,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
           const cardContent = (
@@ -434,27 +429,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">Current Inventory by Commodity</h3>
-            <p className="text-sm text-slate-500">Net stock from inward and outward transactions.</p>
-          </div>
-        </div>
 
-        {commodityBreakdown.length === 0 ? (
-          <div className="mt-6 text-slate-600">No current inventory records available.</div>
-        ) : (
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {commodityBreakdown.map((item: any) => (
-              <div key={item.commodityName} className="rounded-3xl bg-slate-50 p-5 border border-slate-200">
-                <p className="text-sm text-slate-500">{item.commodityName}</p>
-                <p className="mt-3 text-2xl font-semibold text-slate-900">{formatNumber(item.totalMt)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Warehouse Inventory Section */}
       <div className="rounded-3xl bg-slate-50 p-6 border border-slate-200">
