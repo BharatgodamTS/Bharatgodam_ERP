@@ -469,13 +469,15 @@ export async function getClientRevenueAnalytics(warehouseId?: string) {
       if (!entry.warehouseId && entry.inwardId) inwardIds.add(entry.inwardId.toString());
     });
 
-    const safeObjectId = (id: string) => {
+    const safeObjectId = (id: string): mongoose.Types.ObjectId | null => {
       try { return new mongoose.Types.ObjectId(id); } catch { return null; }
     };
+    const toValidObjectIds = (ids: Set<string>): mongoose.Types.ObjectId[] =>
+      Array.from(ids).map(safeObjectId).filter((id): id is mongoose.Types.ObjectId => id !== null);
 
     let inwardMap = new Map<string, { warehouseId: any; commodityId: any }>();
     if (inwardIds.size > 0) {
-      const validInwardIds = Array.from(inwardIds).map(safeObjectId).filter(Boolean);
+      const validInwardIds = toValidObjectIds(inwardIds);
       const inwards = await db.collection('inwards').find({
         _id: { $in: validInwardIds }
       }).toArray();
@@ -494,9 +496,9 @@ export async function getClientRevenueAnalytics(warehouseId?: string) {
       });
     }
 
-    const validWarehouseIds = Array.from(warehouseIds).map(safeObjectId).filter(Boolean);
-    const validCommodityIds = Array.from(commodityIds).map(safeObjectId).filter(Boolean);
-    const validClientIds = Array.from(clientIds).map(safeObjectId).filter(Boolean);
+    const validWarehouseIds = toValidObjectIds(warehouseIds);
+    const validCommodityIds = toValidObjectIds(commodityIds);
+    const validClientIds = toValidObjectIds(clientIds);
 
     const warehouses = await db.collection('warehouses').find({
       _id: { $in: validWarehouseIds },
