@@ -25,11 +25,7 @@ function calculateStorageDays(
     return 1;
   }
 
-  if (status === 'ACTIVE') {
-    return Math.max(1, differenceInDays(to, from) + 1);
-  }
-
-  return Math.max(0, differenceInDays(to, from));
+  return Math.max(1, differenceInDays(to, from) + 1);
 }
 
 export interface Transaction {
@@ -146,8 +142,8 @@ export function generateStoragePeriods(
 
     if (!next) break;
 
-    // Calculate days between dates (boundary-based, no +1)
-    const days = differenceInDays(new Date(next.date), new Date(current.date));
+    // Calculate days between dates inclusively
+    const days = calculateStorageDays(current.date, next.date, 'COMPLETED');
 
     if (days > 0) {
       const rent = balance * rate * days;
