@@ -469,10 +469,15 @@ export async function getClientRevenueAnalytics(warehouseId?: string) {
       if (!entry.warehouseId && entry.inwardId) inwardIds.add(entry.inwardId.toString());
     });
 
+    const safeObjectId = (id: string) => {
+      try { return new mongoose.Types.ObjectId(id); } catch { return null; }
+    };
+
     let inwardMap = new Map<string, { warehouseId: any; commodityId: any }>();
     if (inwardIds.size > 0) {
+      const validInwardIds = Array.from(inwardIds).map(safeObjectId).filter(Boolean);
       const inwards = await db.collection('inwards').find({
-        _id: { $in: Array.from(inwardIds).map(id => new mongoose.Types.ObjectId(id)) }
+        _id: { $in: validInwardIds }
       }).toArray();
 
       inwardMap = new Map(inwards.map(inward => [
@@ -489,23 +494,27 @@ export async function getClientRevenueAnalytics(warehouseId?: string) {
       });
     }
 
+    const validWarehouseIds = Array.from(warehouseIds).map(safeObjectId).filter(Boolean);
+    const validCommodityIds = Array.from(commodityIds).map(safeObjectId).filter(Boolean);
+    const validClientIds = Array.from(clientIds).map(safeObjectId).filter(Boolean);
+
     const warehouses = await db.collection('warehouses').find({
-      _id: { $in: Array.from(warehouseIds).map(id => new mongoose.Types.ObjectId(id)) },
+      _id: { $in: validWarehouseIds },
       ...(session ? tenantFilter : {})
     }).toArray();
     const commodities = await db.collection('commodities').find({
-      _id: { $in: Array.from(commodityIds).map(id => new mongoose.Types.ObjectId(id)) }
+      _id: { $in: validCommodityIds }
     }).toArray();
 
     const outwardFilter: any = {
       ...(session ? tenantFilter : {}),
-      warehouseId: { $in: Array.from(warehouseIds).map(id => new mongoose.Types.ObjectId(id)) }
+      warehouseId: { $in: validWarehouseIds }
     };
     if (clientIds.size > 0) {
-      outwardFilter.clientId = { $in: Array.from(clientIds).map(id => new mongoose.Types.ObjectId(id)) };
+      outwardFilter.clientId = { $in: validClientIds };
     }
     if (commodityIds.size > 0) {
-      outwardFilter.commodityId = { $in: Array.from(commodityIds).map(id => new mongoose.Types.ObjectId(id)) };
+      outwardFilter.commodityId = { $in: validCommodityIds };
     }
 
     const outwards = await db.collection('outwards').find(outwardFilter).toArray();
