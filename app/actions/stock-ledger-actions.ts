@@ -384,23 +384,8 @@ async function generateInvoiceForClientWarehouse(clientId: ObjectId, warehouseId
       ? new Date(entry.periodEndDate).toISOString().split('T')[0]
       : null;
     
-    let days: number;
-    if (startDateStr === endDateStr) {
-      // Same day always counts as 1 day
-      days = 1;
-    } else {
-      // Multi-day: check if there's a real transaction on the end date
-      const hasTransactionOnEnd = periodEndDateStr === endDateStr;
-      
-      if (hasTransactionOnEnd) {
-        // Exclusive: just the gap, don't count the transaction day itself
-        days = Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY);
-      } else {
-        // Inclusive: gap + 1 (end date is month-end fallback, count it)
-        const gap = Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY);
-        days = gap + 1;
-      }
-    }
+    let days = Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY) + 1;
+    days = Math.max(1, days);
 
     const amount = days * entry.quantityMT * entry.ratePerMTPerDay;
 

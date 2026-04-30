@@ -65,12 +65,7 @@ function formatDateKey(date: Date): string {
 function calculateDays(fromDate: string, toDate: string): number {
   const start = normalizeDate(fromDate);
   const end = normalizeDate(toDate);
-  let days = differenceInCalendarDays(end, start);
-  
-  // If period ends on the last day of the month, add +1
-  if (isLastDayOfMonth(end)) {
-    days += 1;
-  }
+  const days = differenceInCalendarDays(end, start) + 1;
   
   return Math.max(1, days);
 }
