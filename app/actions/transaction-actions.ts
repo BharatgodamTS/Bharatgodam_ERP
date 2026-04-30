@@ -421,294 +421,128 @@ export async function processOutward(data: {
 }
 
 /**
- * Get warehouse-level revenue analytics with month-wise charges from ledger
- * Groups by warehouse and returns month-wise revenue totals.
+ * Get warehouse-level revenue analytics by reading directly from revenuedistributions.
+ * Groups by warehouse and month using pre-computed owner/platform shares.
  */
 export async function getClientRevenueAnalytics(warehouseId?: string) {
   try {
-    console.log('[getClientRevenueAnalytics] Starting client revenue calculation...');
+    console.log('[getClientRevenueAnalytics] Starting revenue analytics from revenuedistributions...');
     await connectToDatabase();
 
     let session;
     try {
       session = await requireSession();
-      console.log('[getClientRevenueAnalytics] Session found for:', session.user?.email);
     } catch (error) {
-      console.log('[getClientRevenueAnalytics] No session found, proceeding without tenant filter');
+      console.log('[getClientRevenueAnalytics] No session, proceeding without tenant filter');
     }
-    
+
     const tenantFilter = session ? getTenantFilterForMongo(session) : {};
-    console.log('[getClientRevenueAnalytics] Tenant filter applied');
-    
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database connection not established');
 
-    // Get all ledger entries
-    const allLedgerEntries = await db.collection('ledger_entries').find(session ? { ...tenantFilter } : {}).toArray();
-    console.log('[getClientRevenueAnalytics] Total ledger entries:', allLedgerEntries.length);
-
-    // Filter by warehouse if provided
-    let filteredEntries = allLedgerEntries;
+    // Build warehouse filter
+    const revenueFilter: any = { ...tenantFilter };
     if (warehouseId && warehouseId !== 'ALL') {
-      const warehouseObjectId = new mongoose.Types.ObjectId(warehouseId);
-      filteredEntries = allLedgerEntries.filter(entry =>
-        entry.warehouseId.toString() === warehouseObjectId.toString()
-      );
+      try { revenueFilter.warehouseId = new mongoose.Types.ObjectId(warehouseId); } catch { /* skip */ }
     }
 
-    // Build lookup sets for warehouses, commodities, clients, and inward records
-    const warehouseIds = new Set<string>();
-    const commodityIds = new Set<string>();
-    const clientIds = new Set<string>();
-    const inwardIds = new Set<string>();
+    // Read directly from revenuedistributions (pre-computed at inward time)
+    const revenueRecords = await db.collection('revenuedistributions').find(revenueFilter).toArray();
+    console.log('[getClientRevenueAnalytics] Revenue records found:', revenueRecords.length);
 
-    filteredEntries.forEach((entry: any) => {
-      if (entry.warehouseId) warehouseIds.add(entry.warehouseId.toString());
-      if (entry.commodityId) commodityIds.add(entry.commodityId.toString());
-      if (entry.clientId) clientIds.add(entry.clientId.toString());
-      if (!entry.warehouseId && entry.inwardId) inwardIds.add(entry.inwardId.toString());
+    if (!revenueRecords.length) {
+      return { summary: { totalRevenue: 0, ownerEarnings: 0, platformCommissions: 0 }, warehouseRevenue: [] };
+    }
+
+    // Collect unique IDs for lookups
+    const warehouseIdSet = new Set<string>();
+    const inwardIdSet = new Set<string>();
+    revenueRecords.forEach((r: any) => {
+      if (r.warehouseId) warehouseIdSet.add(r.warehouseId.toString());
+      if (r.inwardId) inwardIdSet.add(r.inwardId.toString());
     });
 
-    const safeObjectId = (id: string): mongoose.Types.ObjectId | null => {
+    const safeId = (id: string): mongoose.Types.ObjectId | null => {
       try { return new mongoose.Types.ObjectId(id); } catch { return null; }
     };
-    const toValidObjectIds = (ids: Set<string>): mongoose.Types.ObjectId[] =>
-      Array.from(ids).map(safeObjectId).filter((id): id is mongoose.Types.ObjectId => id !== null);
+    const toObjIds = (ids: Set<string>): mongoose.Types.ObjectId[] =>
+      Array.from(ids).map(safeId).filter((id): id is mongoose.Types.ObjectId => id !== null);
 
-    let inwardMap = new Map<string, { warehouseId: any; commodityId: any }>();
-    if (inwardIds.size > 0) {
-      const validInwardIds = toValidObjectIds(inwardIds);
-      const inwards = await db.collection('inwards').find({
-        _id: { $in: validInwardIds }
-      }).toArray();
+    // Fetch warehouse names
+    const warehouses = await db.collection('warehouses').find({ _id: { $in: toObjIds(warehouseIdSet) } }).toArray();
+    const warehouseNameMap = new Map(warehouses.map((w: any) => [w._id.toString(), w.name as string]));
 
-      inwardMap = new Map(inwards.map(inward => [
-        inward._id.toString(),
-        {
-          warehouseId: inward.warehouseId,
-          commodityId: inward.commodityId
-        }
-      ]));
+    // Fetch inward dates to determine billing month
+    const inwards = await db.collection('inwards').find({ _id: { $in: toObjIds(inwardIdSet) } }).toArray();
+    const inwardDateMap = new Map(inwards.map((i: any) => {
+      const d = i.date instanceof Date ? i.date : (typeof i.date === 'string' ? new Date(i.date) : null);
+      return [i._id.toString(), d ? d.toISOString().slice(0, 7) : null];
+    }));
 
-      inwards.forEach(inward => {
-        if (inward.warehouseId) warehouseIds.add(inward.warehouseId.toString());
-        if (inward.commodityId) commodityIds.add(inward.commodityId.toString());
-      });
+    // Group by warehouse → month
+    type WData = { warehouseName: string; monthlyCharges: Map<string, number>; totalRevenue: number; ownerShare: number; platformShare: number };
+    const warehouseData = new Map<string, WData>();
+
+    for (const record of revenueRecords) {
+      const wId = record.warehouseId?.toString();
+      if (!wId) continue;
+
+      const warehouseName = warehouseNameMap.get(wId) || 'Unknown Warehouse';
+      let monthKey = 'Unknown';
+      if (record.inwardId) {
+        monthKey = inwardDateMap.get(record.inwardId.toString()) || monthKey;
+      } else if (record.createdAt instanceof Date) {
+        monthKey = record.createdAt.toISOString().slice(0, 7);
+      } else if (record.timestamp instanceof Date) {
+        monthKey = record.timestamp.toISOString().slice(0, 7);
+      }
+
+      if (!warehouseData.has(wId)) {
+        warehouseData.set(wId, { warehouseName, monthlyCharges: new Map(), totalRevenue: 0, ownerShare: 0, platformShare: 0 });
+      }
+
+      const wd = warehouseData.get(wId)!;
+      const amount = typeof record.totalAmount === 'number' ? record.totalAmount : 0;
+      const owner = typeof record.ownerShare === 'number' ? record.ownerShare : Math.round(amount * 0.6 * 100) / 100;
+      const platform = typeof record.platformShare === 'number' ? record.platformShare : Math.round(amount * 0.4 * 100) / 100;
+
+      wd.monthlyCharges.set(monthKey, (wd.monthlyCharges.get(monthKey) || 0) + amount);
+      wd.totalRevenue += amount;
+      wd.ownerShare += owner;
+      wd.platformShare += platform;
     }
 
-    const validWarehouseIds = toValidObjectIds(warehouseIds);
-    const validCommodityIds = toValidObjectIds(commodityIds);
-    const validClientIds = toValidObjectIds(clientIds);
-
-    const warehouses = await db.collection('warehouses').find({
-      _id: { $in: validWarehouseIds },
-      ...(session ? tenantFilter : {})
-    }).toArray();
-    const commodities = await db.collection('commodities').find({
-      _id: { $in: validCommodityIds }
-    }).toArray();
-
-    const outwardFilter: any = {
-      ...(session ? tenantFilter : {}),
-      warehouseId: { $in: validWarehouseIds }
-    };
-    if (clientIds.size > 0) {
-      outwardFilter.clientId = { $in: validClientIds };
-    }
-    if (commodityIds.size > 0) {
-      outwardFilter.commodityId = { $in: validCommodityIds };
-    }
-
-    const outwards = await db.collection('outwards').find(outwardFilter).toArray();
-    const outwardGroups = new Map<string, Array<{ date: Date; quantity: number }>>();
-    outwards.forEach((outward: any) => {
-      const key = `${outward.clientId?.toString() || ''}-${outward.warehouseId?.toString() || ''}-${outward.commodityId?.toString() || ''}`;
-      const outwardDate = parseIsoDate(outward.date);
-      const quantity = typeof outward.quantityMT === 'number' ? outward.quantityMT : 0;
-      if (!outwardDate || quantity <= 0) return;
-
-      if (!outwardGroups.has(key)) {
-        outwardGroups.set(key, []);
-      }
-      outwardGroups.get(key)?.push({ date: outwardDate, quantity });
-    });
-
-    outwardGroups.forEach((events) => {
-      events.sort((a, b) => a.date.getTime() - b.date.getTime());
-    });
-
-    const warehouseMap = new Map(warehouses.map(w => [w._id.toString(), w.name]));
-    const commodityRateMap = new Map(commodities.map(c => [
-      c._id.toString(),
-      c.ratePerMtPerDay ?? (c.ratePerMtMonth ? c.ratePerMtMonth / 30 : 10)
-    ]));
-
-    // Group by warehouse, then by month
-    const warehouseRevenueData = new Map<string, any>();
-    
-    const entriesByKey = new Map<string, Array<any>>();
-    const keyToWarehouseId = new Map<string, string>();
-
-    for (const entry of filteredEntries) {
-      let warehouseId = entry.warehouseId;
-      let commodityId = entry.commodityId;
-
-      if (!warehouseId && entry.inwardId) {
-        const inwardData = inwardMap.get(entry.inwardId.toString());
-        if (inwardData) {
-          warehouseId = inwardData.warehouseId;
-          commodityId = inwardData.commodityId;
-        }
-      }
-
-      if (!warehouseId || !commodityId) {
-        continue;
-      }
-
-      const warehouseIdStr = warehouseId.toString();
-      const commodityIdStr = commodityId.toString();
-      const ledgerKey = `${entry.clientId?.toString() || ''}-${warehouseIdStr}-${commodityIdStr}`;
-
-      const startDate = parseIsoDate(entry.periodStartDate);
-      let endDate = parseIsoDate(entry.periodEndDate);
-      if (!endDate) {
-        const daysStored = typeof entry.daysStored === 'number' ? entry.daysStored : 0;
-        if (daysStored > 0 && startDate) {
-          endDate = addDays(startDate, daysStored - 1);
-        }
-      }
-      if (!startDate || !endDate) {
-        continue;
-      }
-
-      const dailyRate = getDailyRateForEntry(entry, commodityRateMap);
-      const quantity = entry.quantityMT || 0;
-      if (quantity <= 0) continue;
-
-      if (!entriesByKey.has(ledgerKey)) {
-        entriesByKey.set(ledgerKey, []);
-        keyToWarehouseId.set(ledgerKey, warehouseIdStr);
-      }
-      entriesByKey.get(ledgerKey)?.push({
-        startDate,
-        endDate,
-        quantity,
-        remainingQuantity: quantity,
-        dailyRate
-      });
-    }
-
-    for (const [ledgerKey, ledgerEntries] of entriesByKey.entries()) {
-      const warehouseIdStr = keyToWarehouseId.get(ledgerKey)!;
-      const outwardEvents = outwardGroups.get(ledgerKey) || [];
-      const warehouseData = warehouseRevenueData.get(warehouseIdStr) || {
-        warehouseId: new mongoose.Types.ObjectId(warehouseIdStr),
-        warehouseName: warehouseMap.get(warehouseIdStr) || 'Unknown Warehouse',
-        monthlyCharges: new Map<string, number>(),
-        totalRevenue: 0
+    // Convert to array output
+    const warehouseRevenue = Array.from(warehouseData.entries()).map(([wId, data]) => {
+      const monthlyCharges: Record<string, number> = {};
+      data.monthlyCharges.forEach((charge, month) => { monthlyCharges[month] = Math.round(charge * 100) / 100; });
+      return {
+        warehouseId: wId,
+        warehouseName: data.warehouseName,
+        monthlyCharges,
+        totalRevenue: Math.round(data.totalRevenue * 100) / 100,
+        ownerShare: Math.round(data.ownerShare * 100) / 100,
+        platformShare: Math.round(data.platformShare * 100) / 100,
       };
+    }).sort((a, b) => a.warehouseName.localeCompare(b.warehouseName));
 
-      const sortedEntries = ledgerEntries.slice().sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
-      const startDate = sortedEntries.reduce((min: Date | null, entry: any) => {
-        if (!min || entry.startDate < min) return entry.startDate;
-        return min;
-      }, null as Date | null) as Date;
-      const endDate = sortedEntries.reduce((max: Date | null, entry: any) => {
-        if (!max || entry.endDate > max) return entry.endDate;
-        return max;
-      }, null as Date | null) as Date;
-
-      const eventsByDate = new Map<string, Array<{ date: Date; quantity: number }>>();
-      outwardEvents.forEach(event => {
-        const dateKey = formatDateKey(event.date);
-        if (!eventsByDate.has(dateKey)) eventsByDate.set(dateKey, []);
-        eventsByDate.get(dateKey)?.push(event);
-      });
-
-      let currentDate = new Date(startDate);
-      while (currentDate <= endDate) {
-        const currentKey = formatDateKey(currentDate);
-        const events = eventsByDate.get(currentKey) || [];
-        let remainingOutwardQuantity = events.reduce((sum, event) => sum + event.quantity, 0);
-
-        if (remainingOutwardQuantity > 0) {
-          for (const entry of sortedEntries) {
-            if (remainingOutwardQuantity <= 0) break;
-            if (entry.remainingQuantity <= 0) continue;
-            if (entry.startDate <= currentDate && currentDate <= entry.endDate) {
-              const reduceQty = Math.min(entry.remainingQuantity, remainingOutwardQuantity);
-              entry.remainingQuantity -= reduceQty;
-              remainingOutwardQuantity -= reduceQty;
-            }
-          }
-        }
-
-        const monthlyRevenue = sortedEntries.reduce((sum, entry) => {
-          if (entry.remainingQuantity <= 0) return sum;
-          if (entry.startDate <= currentDate && currentDate <= entry.endDate) {
-            return sum + entry.remainingQuantity * entry.dailyRate;
-          }
-          return sum;
-        }, 0);
-
-        if (monthlyRevenue > 0) {
-          const monthKey = getMonthKey(currentDate);
-          const currentMonthCharge = warehouseData.monthlyCharges.get(monthKey) || 0;
-          warehouseData.monthlyCharges.set(monthKey, currentMonthCharge + monthlyRevenue);
-          warehouseData.totalRevenue += monthlyRevenue;
-        }
-
-        currentDate = addDays(currentDate, 1);
-      }
-
-      if (!warehouseRevenueData.has(warehouseIdStr)) {
-        warehouseRevenueData.set(warehouseIdStr, warehouseData);
-      }
-    }
-
-    // Convert to array format with month columns
-    const warehouseRevenue = Array.from(warehouseRevenueData.values())
-      .map(item => {
-        const monthlyCharges: { [key: string]: number } = {};
-        item.monthlyCharges.forEach((charge: number, month: string) => {
-          monthlyCharges[month] = Math.round(charge * 100) / 100;
-        });
-
-        return {
-          warehouseId: item.warehouseId.toString(),
-          warehouseName: item.warehouseName,
-          monthlyCharges,
-          totalRevenue: Math.round(item.totalRevenue * 100) / 100,
-          ownerShare: Math.round(item.totalRevenue * 0.6 * 100) / 100,
-          platformShare: Math.round(item.totalRevenue * 0.4 * 100) / 100
-        };
-      })
-      .sort((a, b) => a.warehouseName.localeCompare(b.warehouseName));
-
-    // Calculate overall summary
-    const totalRevenue = warehouseRevenue.reduce((sum, row) => sum + row.totalRevenue, 0);
-    const ownerEarnings = Math.round(totalRevenue * 0.6 * 100) / 100;
-    const platformCommissions = Math.round(totalRevenue * 0.4 * 100) / 100;
+    const totalRevenue = warehouseRevenue.reduce((sum, r) => sum + r.totalRevenue, 0);
+    const ownerEarnings = warehouseRevenue.reduce((sum, r) => sum + r.ownerShare, 0);
+    const platformCommissions = warehouseRevenue.reduce((sum, r) => sum + r.platformShare, 0);
 
     const summary = {
       totalRevenue: Math.round(totalRevenue * 100) / 100,
-      ownerEarnings,
-      platformCommissions
+      ownerEarnings: Math.round(ownerEarnings * 100) / 100,
+      platformCommissions: Math.round(platformCommissions * 100) / 100,
     };
 
     console.log('[getClientRevenueAnalytics] Summary:', summary);
-    console.log('[getClientRevenueAnalytics] Warehouse entries:', warehouseRevenue.length);
+    return { summary, warehouseRevenue };
 
-    return {
-      summary,
-      warehouseRevenue
-    };
   } catch (error: any) {
     console.error('[getClientRevenueAnalytics] Error:', error?.message || error);
-    if (error?.stack) console.error(error.stack);
-    return {
-      summary: { totalRevenue: 0, ownerEarnings: 0, platformCommissions: 0 },
-      warehouseRevenue: []
-    };
+    return { summary: { totalRevenue: 0, ownerEarnings: 0, platformCommissions: 0 }, warehouseRevenue: [] };
   }
 }
+
+
