@@ -14,8 +14,7 @@ import { differenceInDays, max, min, startOfMonth, endOfMonth, isLastDayOfMonth 
  */
 function calculateStorageDays(
   fromDate: string | Date,
-  toDate: string | Date,
-  status: 'ACTIVE' | 'COMPLETED'
+  toDate: string | Date
 ): number {
   const from = typeof fromDate === 'string' ? new Date(fromDate) : fromDate;
   const to = typeof toDate === 'string' ? new Date(toDate) : toDate;
@@ -70,7 +69,7 @@ export function splitPeriodByMonth(period: StoragePeriod): StoragePeriod[] {
     const segmentEnd = end < monthEnd ? end : monthEnd;
 
     // Calculate days for this segment based on whether the period is active or completed
-    const days = calculateStorageDays(currentStart, segmentEnd, period.status);
+    const days = calculateStorageDays(currentStart, segmentEnd);
     
     // Calculate rent for this segment
     const rent = period.qty * period.rate * days;
@@ -143,7 +142,7 @@ export function generateStoragePeriods(
     if (!next) break;
 
     // Calculate days between dates inclusively
-    const days = calculateStorageDays(current.date, next.date, 'COMPLETED');
+    const days = calculateStorageDays(current.date, next.date);
 
     if (days > 0) {
       const rent = balance * rate * days;
@@ -176,7 +175,7 @@ export function generateStoragePeriods(
     }
 
     const status = balance > 0 ? 'ACTIVE' : 'COMPLETED';
-    const days = calculateStorageDays(fromDate, toDate, status);
+    const days = calculateStorageDays(fromDate, toDate);
 
     console.log(`Last period: ${fromDate} to ${toDate}, balance: ${balance}, status: ${status}, days: ${days}`);
 
@@ -211,7 +210,7 @@ export function generateStoragePeriods(
         const effectiveTo = min([new Date(period.toDate), monthEnd]);
 
         if (effectiveFrom <= effectiveTo) {
-          const days = calculateStorageDays(effectiveFrom, effectiveTo, period.status);
+          const days = calculateStorageDays(effectiveFrom, effectiveTo);
           const rent = period.qty * rate * days;
           return {
             ...period,
