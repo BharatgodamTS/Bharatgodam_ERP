@@ -250,7 +250,7 @@ export default async function DashboardPage() {
     }
   ]).toArray();
 
-  const [invoiceReceivablesResult, paymentsReceivedResult, activeWarehouseCount, activeClientCount, invoiceMasterCount, formalInvoiceCount, transactionInvoiceCountResult, ledgerEntryCount] = await Promise.all([
+  const [invoiceReceivablesResult, paymentsReceivedResult, activeWarehouseCount, activeClientCount, invoiceMasterCount, formalInvoiceCount, transactionInvoiceCountResult, inwardThisMonthResult] = await Promise.all([
     db.collection('invoice_master').aggregate([
       {
         $project: {
@@ -272,8 +272,8 @@ export default async function DashboardPage() {
       { $match: { ...tenantFilter, status: 'COMPLETED' } },
       { $group: { _id: null, totalRevenue: { $sum: '$amount' } } }
     ]).toArray(),
-      db.collection('warehouses').countDocuments({ ...tenantFilter }),
-      db.collection('clients').countDocuments({ ...tenantFilter }),
+    db.collection('warehouses').countDocuments({ ...tenantFilter }),
+    db.collection('clients').countDocuments({ ...tenantFilter }),
     db.collection('invoice_master').countDocuments({ ...tenantFilter }),
     db.collection('invoices').countDocuments({ ...tenantFilter }),
     db.collection('transactions').aggregate([
@@ -308,7 +308,26 @@ export default async function DashboardPage() {
       },
       { $count: 'invoicePeriods' }
     ]).toArray(),
-    db.collection('ledger_entries').countDocuments({ ...tenantFilter })
+    db.collection('transactions').aggregate([
+      { $match: { ...tenantFilter, direction: 'INWARD' } },
+      {
+        $project: {
+          dateString: {
+            $cond: [
+              { $eq: [{ $type: '$date' }, 'date'] },
+              { $dateToString: { format: '%Y-%m', date: '$date' } },
+              { $substrCP: ['$date', 0, 7] }
+            ]
+          }
+        }
+      },
+      {
+        $match: {
+          dateString: new Date().toISOString().slice(0, 7)
+        }
+      },
+      { $count: 'count' }
+    ]).toArray()
   ]);
 
   const invoiceMasterCountValue = invoiceMasterCount ?? 0;
@@ -326,11 +345,13 @@ export default async function DashboardPage() {
   const totalRevenue = revenueAnalytics.summary.totalRevenue;
   const pendingReceivables = invoiceReceivablesResult[0]?.totalPendingReceivables ?? 0;
 
+  const inwardThisMonthCount = inwardThisMonthResult?.[0]?.count ?? 0;
+
   const masterLinks = [
     { name: 'Active Warehouses', value: activeWarehouseCount, href: '/dashboard/warehouses' },
     { name: 'Active Clients', value: activeClientCount, href: '/dashboard/clients' },
     { name: 'Invoices', value: invoiceCount, href: '/dashboard/client-invoices' },
-    { name: 'Ledger Entries', value: ledgerEntryCount, href: '/dashboard/ledger' }
+    { name: 'Inwards This Month', value: inwardThisMonthCount, href: '/dashboard/ledger' }
   ];
 
   const stats = [
