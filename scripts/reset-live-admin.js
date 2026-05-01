@@ -2,11 +2,11 @@ const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 
 // ─── SET YOUR LIVE ATLAS URL HERE ───────────────────────────────────────────
-const MONGODB_URL = 'mongodb+srv://bharatgodamtechsolutions_db_user:YOUR_PASSWORD@cluster0.qpdiozf.mongodb.net/?retryWrites=true&w=majority';
-const MONGODB_DB  = 'bharatgodam_db';
+const MONGODB_URL = 'mongodb+srv://bharatgodamtechsolutions_db_user:Bharatgodam123@cluster0.qpdiozf.mongodb.net/?retryWrites=true&w=majority';
+const MONGODB_DB  = 'wms_production'; // ← must match MONGODB_DB in Vercel env vars
 
 // ─── SET YOUR LOGIN CREDENTIALS ─────────────────────────────────────────────
-const ADMIN_EMAIL    = 'shrutimehata.01@gmail.com'; // ← your email
+const ADMIN_EMAIL    = 'bharatgodam.techsolutions@gmail.com'; // ← your email
 const ADMIN_PASSWORD = '123456';                     // ← your password
 // ────────────────────────────────────────────────────────────────────────────
 
