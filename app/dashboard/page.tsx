@@ -9,6 +9,8 @@ import TransactionsReportWrapper from '@/components/features/reports/transaction
 import { getClientRevenueAnalytics } from '@/app/actions/transaction-actions';
 import WarehouseInventory from '@/components/features/warehouse/warehouse-inventory';
 
+export const dynamic = 'force-dynamic';
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -308,11 +310,11 @@ export default async function DashboardPage() {
       },
       { $count: 'invoicePeriods' }
     ]).toArray(),
-    db.collection('transactions').aggregate([
-      { $match: { ...tenantFilter, direction: 'INWARD' } },
+    db.collection('inwards').aggregate([
+      { $match: Object.keys(tenantFilter).length ? tenantFilter : {} },
       {
         $project: {
-          dateString: {
+          monthString: {
             $cond: [
               { $eq: [{ $type: '$date' }, 'date'] },
               { $dateToString: { format: '%Y-%m', date: '$date' } },
@@ -323,7 +325,7 @@ export default async function DashboardPage() {
       },
       {
         $match: {
-          dateString: new Date().toISOString().slice(0, 7)
+          monthString: new Date().toISOString().slice(0, 7)
         }
       },
       { $count: 'count' }
