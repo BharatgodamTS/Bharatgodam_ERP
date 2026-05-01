@@ -560,6 +560,7 @@ export const LedgerCalculator: React.FC<LedgerCalculatorProps> = ({
           )}
 
           {/* Payment History */}
+          {/* 
           {ledgerData && (
             <PaymentHistory
               payments={ledgerData.paymentHistory}
@@ -569,6 +570,7 @@ export const LedgerCalculator: React.FC<LedgerCalculatorProps> = ({
               lineItems={lineItems}
             />
           )}
+          */}
         </div>
       </div>
     </div>
