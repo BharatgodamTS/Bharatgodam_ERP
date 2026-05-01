@@ -69,67 +69,61 @@ export const InvoiceSummary: React.FC<InvoiceSummaryProps> = ({
 
       {/* Balance Card */}
       <div
-        className={`rounded-lg border p-6 shadow-sm hover:shadow-md transition-shadow ${
-          balanceStatus === 'outstanding'
+        className={`rounded-lg border p-6 shadow-sm hover:shadow-md transition-shadow ${balanceStatus === 'outstanding'
             ? 'bg-gradient-to-br from-orange-50 to-red-50 border-orange-200'
             : balanceStatus === 'overpaid'
-            ? 'bg-gradient-to-br from-purple-50 to-violet-50 border-purple-200'
-            : 'bg-gradient-to-br from-teal-50 to-cyan-50 border-teal-200'
-        }`}
+              ? 'bg-gradient-to-br from-purple-50 to-violet-50 border-purple-200'
+              : 'bg-gradient-to-br from-teal-50 to-cyan-50 border-teal-200'
+          }`}
       >
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className={`text-xs font-bold uppercase tracking-widest mb-1 ${
-              balanceStatus === 'outstanding'
+            <p className={`text-xs font-bold uppercase tracking-widest mb-1 ${balanceStatus === 'outstanding'
                 ? 'text-orange-600'
                 : balanceStatus === 'overpaid'
-                ? 'text-purple-600'
-                : 'text-teal-600'
-            }`}>
+                  ? 'text-purple-600'
+                  : 'text-teal-600'
+              }`}>
               {balanceStatus === 'outstanding'
                 ? 'Outstanding Balance'
                 : balanceStatus === 'overpaid'
-                ? 'Overpaid Amount'
-                : 'Settled'}
+                  ? 'Overpaid Amount'
+                  : 'Settled'}
             </p>
-            <p className={`text-3xl font-black ${
-              balanceStatus === 'outstanding'
+            <p className={`text-3xl font-black ${balanceStatus === 'outstanding'
                 ? 'text-orange-900'
                 : balanceStatus === 'overpaid'
-                ? 'text-purple-900'
-                : 'text-teal-900'
-            }`}>
+                  ? 'text-purple-900'
+                  : 'text-teal-900'
+              }`}>
               ₹{Math.abs(totalBalance).toLocaleString('en-IN')}
             </p>
           </div>
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-            balanceStatus === 'outstanding'
+          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${balanceStatus === 'outstanding'
               ? 'bg-orange-200'
               : balanceStatus === 'overpaid'
-              ? 'bg-purple-200'
-              : 'bg-teal-200'
-          }`}>
-            <AlertCircle className={`h-5 w-5 ${
-              balanceStatus === 'outstanding'
+                ? 'bg-purple-200'
+                : 'bg-teal-200'
+            }`}>
+            <AlertCircle className={`h-5 w-5 ${balanceStatus === 'outstanding'
                 ? 'text-orange-600'
                 : balanceStatus === 'overpaid'
-                ? 'text-purple-600'
-                : 'text-teal-600'
-            }`} />
+                  ? 'text-purple-600'
+                  : 'text-teal-600'
+              }`} />
           </div>
         </div>
-        <p className={`text-xs ${
-          balanceStatus === 'outstanding'
+        <p className={`text-xs ${balanceStatus === 'outstanding'
             ? 'text-orange-700'
             : balanceStatus === 'overpaid'
-            ? 'text-purple-700'
-            : 'text-teal-700'
-        }`}>
+              ? 'text-purple-700'
+              : 'text-teal-700'
+          }`}>
           {balanceStatus === 'outstanding'
             ? 'Amount due from client'
             : balanceStatus === 'overpaid'
-            ? 'Credit to be adjusted'
-            : 'All payments settled'}
+              ? 'Credit to be adjusted'
+              : 'All payments settled'}
         </p>
       </div>
     </div>

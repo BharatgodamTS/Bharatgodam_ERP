@@ -113,20 +113,24 @@ export default function LedgerDashboard() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Client Name</TableHead>
+                      {/* 
                       <TableHead className="text-right">Outstanding</TableHead>
                       <TableHead className="text-right">Received</TableHead>
                       <TableHead className="text-right">Balance</TableHead>
+                      */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {summary.clientBreakdown.map((client) => (
                       <TableRow key={client.clientId} className="hover:bg-slate-50">
                         <TableCell className="font-medium text-slate-900">{client.clientName}</TableCell>
+                        {/* 
                         <TableCell className="text-right text-slate-900">{formatCurrency(client.outstanding)}</TableCell>
                         <TableCell className="text-right text-emerald-600 font-medium">{formatCurrency(client.received)}</TableCell>
                         <TableCell className={`text-right font-semibold ${client.balance > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
                           {formatCurrency(client.balance)}
                         </TableCell>
+                        */}
                       </TableRow>
                     ))}
                   </TableBody>
