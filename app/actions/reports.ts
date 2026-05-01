@@ -1,7 +1,7 @@
 'use server';
 
 import { getDb } from '@/lib/mongodb';
-import { getTenantFilterForMongo, appendOwnership, requireSession } from '@/lib/ownership';
+import { getTenantFilterForMongo, appendOwnership, appendOwnershipForMongo, requireSession } from '@/lib/ownership';
 import { ObjectId } from 'mongodb';
 import type { IDetailedBooking, IClient, IInvoiceMaster, IInvoiceLineItem, IWarehouse } from '@/types/schemas';
 
@@ -841,23 +841,43 @@ export async function recordPayment(clientId: string, amount: number, paymentDat
     const db = await getDb();
     const clientObjectId = new ObjectId(clientId);
 
-    const payment = appendOwnership({
+    // Use appendOwnershipForMongo so userId is stored as ObjectId
+    // This ensures getClientBalance (which queries with ObjectId userId) can find these payments
+    const payment = appendOwnershipForMongo({
       clientId: clientObjectId,
       amount: amount,
       paymentDate: new Date(paymentDate),
-      invoiceId: invoiceId ? new ObjectId(invoiceId) : null,
+      invoiceId: invoiceId ? (() => { try { return new ObjectId(invoiceId); } catch { return invoiceId; } })() : null,
       notes: notes || '',
       createdAt: new Date(),
       status: 'COMPLETED'
     }, session);
 
     const result = await db.collection('payments').insertOne(payment);
+
+    // Also update invoice_master paidAmount and status if invoiceId provided
+    if (invoiceId) {
+      try {
+        const invoiceObjId = new ObjectId(invoiceId);
+        const master = await db.collection('invoice_master').findOne({ _id: invoiceObjId });
+        if (master) {
+          const newPaid = (master.paidAmount || 0) + amount;
+          const newStatus = newPaid >= master.totalAmount ? 'PAID' : 'PARTIAL';
+          await db.collection('invoice_master').updateOne(
+            { _id: invoiceObjId },
+            { $set: { paidAmount: newPaid, status: newStatus, updatedAt: new Date() } }
+          );
+        }
+      } catch { /* invalid invoiceId, skip */ }
+    }
+
     return { success: true, paymentId: result.insertedId };
   } catch (error: any) {
     console.error('[recordPayment] Error:', error);
     return { success: false, message: error.message || 'Failed to record payment' };
   }
 }
+
 
 export async function getClientPayments(clientId: string, startDate?: string, endDate?: string) {
   try {

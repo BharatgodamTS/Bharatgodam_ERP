@@ -371,6 +371,7 @@ export default async function DashboardPage() {
       color: 'text-sky-600',
       bg: 'bg-sky-100',
     },
+    /*
     {
       name: 'Total Revenue',
       value: formatCurrency(totalRevenue),
@@ -379,6 +380,7 @@ export default async function DashboardPage() {
       color: 'text-emerald-600',
       bg: 'bg-emerald-100',
     },
+    */
   ];
 
   return (
