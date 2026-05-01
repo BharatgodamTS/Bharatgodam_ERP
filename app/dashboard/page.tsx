@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { Box, Layers, IndianRupee, Clock3 } from 'lucide-react';
+import { Box, Layers, IndianRupee, Clock3, ChevronRight } from 'lucide-react';
 import { getDb } from '@/lib/mongodb';
 import { getTenantFilterForMongo } from '@/lib/ownership';
 import TransactionsReportWrapper from '@/components/features/reports/transactions-report-wrapper';
@@ -384,27 +384,56 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Command Center</h1>
-        <p className="text-slate-500">
-          Welcome back, {session.user?.email} • Role: {(session.user as any)?.role}
-        </p>
+    <div className="space-y-8 pb-12">
+      {/* Header Section */}
+      <div className="relative overflow-hidden rounded-[2rem] bg-slate-900 p-8 text-white shadow-2xl xl:p-12">
+        <div className="relative z-10">
+          <h1 className="text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
+            Command <span className="text-blue-500 italic">Center</span>
+          </h1>
+          <p className="mt-4 max-w-2xl text-lg text-slate-400">
+            Welcome back, <span className="text-white font-semibold">{session.user?.email}</span>. 
+            You are managing the system as an <span className="text-blue-400 uppercase tracking-widest text-sm font-bold">{ (session.user as any)?.role }</span>.
+          </p>
+          
+          <div className="mt-8 flex flex-wrap gap-4">
+            <div className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-md">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-300">System Live</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-md">
+              <Clock3 className="h-4 w-4 text-blue-400" />
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-300">
+                {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Background Decorative Elements */}
+        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-600/20 blur-[100px]" />
+        <div className="absolute -bottom-20 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-indigo-600/10 blur-[80px]" />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {/* Primary Statistics Grid */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
           const cardContent = (
-            <div className="overflow-hidden rounded-3xl bg-white p-6 shadow-sm border border-slate-100 hover:border-slate-300 transition">
-              <div className="flex items-start justify-between gap-4">
+            <div className="group relative overflow-hidden rounded-[2rem] bg-white p-8 shadow-sm border border-slate-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+              <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-500">{stat.name}</p>
-                  <p className="mt-3 text-3xl font-semibold text-slate-900">{stat.value}</p>
+                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">{stat.name}</p>
+                  <p className="mt-4 text-4xl font-black text-slate-900 tracking-tight">{stat.value}</p>
                 </div>
-                <div className={`p-3 rounded-2xl ${stat.bg}`}>
-                  <Icon className={`h-6 w-6 ${stat.color}`} aria-hidden="true" />
+                <div className={`rounded-2xl p-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${stat.bg}`}>
+                  <Icon className={`h-8 w-8 ${stat.color}`} />
                 </div>
+              </div>
+              
+              {/* Subtle Progress Indicator or Sparkle */}
+              <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-slate-50">
+                <div className={`h-full w-2/3 rounded-full transition-all duration-1000 ${stat.bg.replace('bg-', 'bg-').replace('100', '500')}`} />
               </div>
             </div>
           );
@@ -419,46 +448,73 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-          {masterLinks.map((item) => (
-            <Link key={item.name} href={item.href} className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100 transition hover:border-slate-300">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{item.name}</p>
-              <p className="mt-4 text-3xl font-semibold text-slate-900">{formatNumber(item.value)}</p>
+      {/* Quick Access Tiles */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {masterLinks.map((item, index) => {
+          const colors = [
+            'from-blue-500 to-blue-600',
+            'from-indigo-500 to-indigo-600',
+            'from-emerald-500 to-emerald-600',
+            'from-amber-500 to-amber-600'
+          ];
+          return (
+            <Link 
+              key={item.name} 
+              href={item.href} 
+              className="group relative overflow-hidden rounded-3xl bg-white p-6 shadow-sm border border-slate-100 transition-all hover:shadow-lg hover:border-slate-200"
+            >
+              <div className={`absolute top-0 left-0 h-1 w-full bg-gradient-to-r ${colors[index % colors.length]}`} />
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 group-hover:text-slate-600">{item.name}</p>
+              <p className="mt-4 text-3xl font-black text-slate-900 group-hover:scale-105 transition-transform">{formatNumber(item.value)}</p>
+              <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-slate-400 group-hover:text-blue-500">
+                <span>View Details</span>
+                <ChevronRight className="h-3 w-3" />
+              </div>
             </Link>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
-          <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Transaction Report</h3>
-              <p className="text-sm text-slate-500">Live transaction report with warehouse and client filters using the standard transaction report table layout.</p>
+      {/* Transaction Analysis Section */}
+      <div className="overflow-hidden rounded-[2.5rem] bg-white shadow-sm border border-slate-100">
+        <div className="border-b border-slate-50 bg-slate-50/50 p-8 xl:p-10">
+          <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-600">
+                Live Data
+              </div>
+              <h3 className="text-2xl font-black text-slate-900">Transaction Analysis</h3>
+              <p className="max-w-md text-sm text-slate-500 font-medium">Real-time breakdown of inward and outward movements across all managed facilities.</p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-3xl bg-slate-50 px-4 py-3 border border-slate-200">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Inward</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{formatNumber(inwardTransactions)}</p>
-              </div>
-              <div className="rounded-3xl bg-slate-50 px-4 py-3 border border-slate-200">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Outward</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{formatNumber(outwardTransactions)}</p>
-              </div>
-              <div className="rounded-3xl bg-slate-50 px-4 py-3 border border-slate-200">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Filtered Total</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{formatNumber(totalTransactions)}</p>
-              </div>
+            
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Inward', val: inwardTransactions, theme: 'blue' },
+                { label: 'Outward', val: outwardTransactions, theme: 'amber' },
+                { label: 'Total', val: totalTransactions, theme: 'slate' }
+              ].map(box => (
+                <div key={box.label} className="rounded-2xl bg-white px-5 py-4 shadow-sm border border-slate-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{box.label}</p>
+                  <p className={`mt-1 text-xl font-black text-${box.theme}-600`}>{formatNumber(box.val)}</p>
+                </div>
+              ))}
             </div>
           </div>
+        </div>
+        <div className="p-4 sm:p-8">
           <TransactionsReportWrapper />
         </div>
       </div>
 
-
-
-      {/* Warehouse Inventory Section */}
-      <div className="rounded-3xl bg-slate-50 p-6 border border-slate-200">
-        <WarehouseInventory />
+      {/* Global Inventory Snapshot */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-4">
+          <h3 className="text-xl font-black text-slate-900 tracking-tight">Global Inventory Snapshot</h3>
+          <Link href="/dashboard/warehouses" className="text-xs font-bold text-blue-600 hover:underline">Manage Warehouses</Link>
+        </div>
+        <div className="rounded-[2.5rem] overflow-hidden shadow-2xl shadow-blue-900/5">
+          <WarehouseInventory />
+        </div>
       </div>
     </div>
   );
