@@ -356,7 +356,7 @@ export default async function DashboardPage() {
     { name: 'Inwards This Month', value: inwardThisMonthCount, href: '/dashboard/ledger' }
   ];
 
-  const stats = [
+  const stats: { name: string; value: string; icon: any; color: string; bg: string; href?: string }[] = [
     {
       name: 'Total Transactions',
       value: formatNumber(totalTransactions),
@@ -409,7 +409,7 @@ export default async function DashboardPage() {
             </div>
           );
 
-          return (stat as any).href ? (
+          return stat.href ? (
             <Link key={stat.name} href={stat.href} className="block">
               {cardContent}
             </Link>
