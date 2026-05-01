@@ -409,7 +409,7 @@ export default async function DashboardPage() {
             </div>
           );
 
-          return stat.href ? (
+          return (stat as any).href ? (
             <Link key={stat.name} href={stat.href} className="block">
               {cardContent}
             </Link>
