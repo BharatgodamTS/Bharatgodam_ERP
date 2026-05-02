@@ -44,12 +44,31 @@ export async function POST(req: Request) {
       amount: Number(amount),
       date: new Date(date).toISOString().split('T')[0],
       paymentDate: new Date(date), // Add paymentDate for consistency with recordPayment action
+      invoiceId: body.invoiceId ? (() => { try { return new ObjectId(body.invoiceId); } catch { return body.invoiceId; } })() : null,
       recordedBy: session.user?.email,
       createdAt: new Date(),
       status: 'COMPLETED',
     }, session);
 
     const result = await db.collection('payments').insertOne(paymentDocument);
+
+    // Update invoice_master if invoiceId provided
+    if (body.invoiceId) {
+      try {
+        const invId = new ObjectId(body.invoiceId);
+        const master = await db.collection('invoice_master').findOne({ _id: invId });
+        if (master) {
+          const newPaid = (master.paidAmount || 0) + Number(amount);
+          const newStatus = newPaid >= (master.totalAmount || 0) ? 'PAID' : 'PARTIAL';
+          await db.collection('invoice_master').updateOne(
+            { _id: invId },
+            { $set: { paidAmount: newPaid, status: newStatus, updatedAt: new Date() } }
+          );
+        }
+      } catch (err) {
+        console.warn('Could not update invoice_master:', err);
+      }
+    }
 
     return NextResponse.json(
       {

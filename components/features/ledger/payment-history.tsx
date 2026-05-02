@@ -70,6 +70,9 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
           clientName,
           amount: Number(formData.amount),
           date: formData.date,
+          invoiceId: selectedLineItem.startsWith('master-') ? selectedLineItem.replace('master-', '') : 
+                     selectedLineItem.startsWith('invoice-') ? selectedLineItem.replace('invoice-', '') : 
+                     null,
         }),
       });
 

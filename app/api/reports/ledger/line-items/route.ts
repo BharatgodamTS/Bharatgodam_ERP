@@ -3,6 +3,7 @@ import { getDb } from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getTenantFilterForMongo, requireSession } from '@/lib/ownership';
+import { ObjectId } from 'mongodb';
 
 /**
  * GET /api/reports/ledger/line-items?clientId=[clientId]
@@ -31,16 +32,31 @@ export async function GET(req: Request) {
     // Fetch invoices and bookings for the client
     const tenantFilter = getTenantFilterForMongo(session);
 
-    const [bookings, invoices] = await Promise.all([
+    const [bookings, invoices, masters] = await Promise.all([
       db.collection('bookings')
-        .find({ accountId: trimmedClientId, direction: { $in: ['INWARD', 'OUTWARD'] }, ...tenantFilter })
+        .find({ 
+          $or: [{ accountId: trimmedClientId }, { clientId: trimmedClientId }, { clientId: new ObjectId(trimmedClientId) }], 
+          direction: { $in: ['INWARD', 'OUTWARD'] }, 
+          ...tenantFilter 
+        })
         .sort({ date: -1 })
-        .limit(50)
+        .limit(20)
         .toArray(),
       db.collection('invoices')
-        .find({ accountId: trimmedClientId, ...tenantFilter })
+        .find({ 
+          $or: [{ accountId: trimmedClientId }, { clientId: trimmedClientId }, { clientId: new ObjectId(trimmedClientId) }], 
+          ...tenantFilter 
+        })
         .sort({ date: -1 })
-        .limit(50)
+        .limit(20)
+        .toArray(),
+      db.collection('invoice_master')
+        .find({ 
+          clientId: new ObjectId(trimmedClientId),
+          ...tenantFilter 
+        })
+        .sort({ invoiceMonth: -1 })
+        .limit(20)
         .toArray(),
     ]);
 
@@ -54,10 +70,17 @@ export async function GET(req: Request) {
       })),
       ...invoices.map((invoice) => ({
         id: `invoice-${invoice._id?.toString() || ''}`,
-        description: `Invoice - ${invoice.invoiceNumber || 'INV'} (${new Date(invoice.date).toLocaleDateString()})`,
+        description: `Legacy Invoice - ${invoice.invoiceNumber || 'INV'}`,
         amount: invoice.total || invoice.basicTotal || 0,
         date: invoice.date,
         type: 'invoice',
+      })),
+      ...masters.map((master) => ({
+        id: `master-${master._id?.toString() || ''}`,
+        description: `Month Invoice: ${master.invoiceMonth} (${master.status})`,
+        amount: master.totalAmount || 0,
+        date: master.createdAt,
+        type: 'master',
       })),
     ];
 
