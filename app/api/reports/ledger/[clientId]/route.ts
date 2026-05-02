@@ -57,29 +57,26 @@ export async function GET(
     const [bookings, transactionDocs, paymentsDocs, outstandingInvoicesResult, commoditiesResult] = await Promise.all([
       db.collection('bookings')
         .find({ 
-          ...clientMatch,
-          direction: { $in: ['INWARD', 'OUTWARD'] }, 
-          ...tenantFilter 
+          $and: [clientMatch, tenantFilter],
+          direction: { $in: ['INWARD', 'OUTWARD'] }
         })
         .sort({ date: 1 })
         .toArray(),
       db.collection('transactions')
         .find({ 
-          ...clientMatch,
-          ...tenantFilter 
+          $and: [clientMatch, tenantFilter]
         })
         .sort({ date: 1 })
         .toArray(),
       db.collection('payments')
         .find({ 
-          ...clientMatch,
-          ...tenantFilter 
+          $and: [clientMatch, tenantFilter]
         })
         .sort({ date: 1, paymentDate: 1 })
         .toArray(),
       db.collection('invoice_master')
         .aggregate([
-          { $match: { clientId: new ObjectId(trimmedClientId), status: { $ne: 'PAID' }, ...tenantFilter } },
+          { $match: { $and: [{ clientId: new ObjectId(trimmedClientId), status: { $ne: 'PAID' } }, tenantFilter] } },
           { $group: { _id: null, totalOutstanding: { $sum: '$totalAmount' } } }
         ])
         .toArray(),
