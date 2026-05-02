@@ -114,7 +114,7 @@ export default async function ConsolidatedInvoicePage({ params }: ConsolidatedIn
                 <DollarSign className="w-5 h-5 text-slate-600" />
                 <h2 className="text-lg font-semibold">Payment History</h2>
               </div>
-              <PaymentHistory payments={payments} clientName={clientName} />
+              <PaymentHistory payments={payments} clientName={clientName} clientId={clientId} />
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
