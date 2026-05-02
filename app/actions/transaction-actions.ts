@@ -246,24 +246,19 @@ export async function processInward(data: {
     const ownerShare = Math.round(totalAmount * 0.6 * 100) / 100;
     const platformShare = Math.round((totalAmount - ownerShare) * 100) / 100;
 
+    const distributionPayload = appendOwnershipForMongo({
+      inwardId: newInward._id,
+      clientId: data.clientId,
+      warehouseId: data.warehouseId,
+      totalAmount,
+      ownerShare,
+      platformShare,
+    }, authSession);
+
     if (session) {
-      await RevenueDistribution.create([{
-        inwardId: newInward._id,
-        clientId: data.clientId,
-        warehouseId: data.warehouseId,
-        totalAmount,
-        ownerShare,
-        platformShare,
-      }], { session });
+      await RevenueDistribution.create([distributionPayload], { session });
     } else {
-      await RevenueDistribution.create([{
-        inwardId: newInward._id,
-        clientId: data.clientId,
-        warehouseId: data.warehouseId,
-        totalAmount,
-        ownerShare,
-        platformShare,
-      }]);
+      await RevenueDistribution.create([distributionPayload]);
     }
 
     if (session) {
@@ -440,15 +435,32 @@ export async function getClientRevenueAnalytics(warehouseId?: string) {
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database connection not established');
 
-    // Build warehouse filter
-    const revenueFilter: any = { ...tenantFilter };
+    // BUILD ROBUST FILTER: 
+    // Instead of just filtering revenue records directly (which might miss userId in legacy data),
+    // we find all warehouses the user owns and filter revenue by those warehouse IDs.
+    const userWarehouses = await db.collection('warehouses').find(tenantFilter).toArray();
+    const userWarehouseIds = userWarehouses.map(w => w._id);
+
+    const revenueFilter: any = {
+      warehouseId: { $in: userWarehouseIds }
+    };
+
     if (warehouseId && warehouseId !== 'ALL') {
-      try { revenueFilter.warehouseId = new mongoose.Types.ObjectId(warehouseId); } catch { /* skip */ }
+      try { 
+        const targetId = new mongoose.Types.ObjectId(warehouseId);
+        // Ensure the filtered warehouse is actually owned by the user
+        if (userWarehouseIds.some(id => id.toString() === targetId.toString())) {
+          revenueFilter.warehouseId = targetId;
+        } else if (userWarehouseIds.length > 0) {
+          // If they try to access a warehouse they don't own, force empty result
+          return { summary: { totalRevenue: 0, ownerEarnings: 0, platformCommissions: 0 }, warehouseRevenue: [] };
+        }
+      } catch { /* skip */ }
     }
 
-    // Read directly from revenuedistributions (pre-computed at inward time)
+    // Read directly from revenuedistributions
     const revenueRecords = await db.collection('revenuedistributions').find(revenueFilter).toArray();
-    console.log('[getClientRevenueAnalytics] Revenue records found:', revenueRecords.length);
+    console.log(`[getClientRevenueAnalytics] Found ${revenueRecords.length} revenue records for ${userWarehouseIds.length} owned warehouses`);
 
     if (!revenueRecords.length) {
       return { summary: { totalRevenue: 0, ownerEarnings: 0, platformCommissions: 0 }, warehouseRevenue: [] };

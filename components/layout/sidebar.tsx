@@ -17,7 +17,7 @@ const navItems = [
   { name: 'Transactions Report', href: '/dashboard/transactions-report', icon: BarChart2 },
   { name: 'Client Invoices', href: '/dashboard/client-invoices', icon: Receipt },
   { name: 'Client Ledger', href: '/dashboard/ledger', icon: FileText },
-  // { name: 'Revenue Split', href: '/dashboard/revenue', icon: DollarSign },
+  { name: 'Revenue Split', href: '/dashboard/revenue', icon: DollarSign },
 ];
 
 const adminNavItems = [
