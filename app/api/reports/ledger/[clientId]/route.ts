@@ -18,8 +18,7 @@ export async function GET(
     }
     const tenantFilter = getTenantFilterForMongo(session);
 
-    const url = new URL(req.url);
-    const clientId = url.pathname.split('/').pop() || '';
+    const { clientId } = await params;
     if (!clientId) {
       return NextResponse.json({ success: false, message: 'Client ID is required' }, { status: 400 });
     }
@@ -30,12 +29,35 @@ export async function GET(
 
     const db = await getDb();
 
+    // Fetch client to get their name (used as fallback filter for legacy records)
+    const client = await db.collection('clients').findOne({ 
+      $or: [{ _id: new ObjectId(trimmedClientId) }, { _id: trimmedClientId as any }],
+      ...tenantFilter 
+    });
+
+    const clientName = client?.name || client?.clientName || '';
     const accountId = trimmedClientId;
+
+    // Create a robust filter that matches by ID or Name
+    const clientMatch: any = {
+      $or: [
+        { accountId: trimmedClientId },
+        { clientId: trimmedClientId },
+        { clientId: new ObjectId(trimmedClientId) }
+      ]
+    };
+
+    // If we have a client name, also match by name for legacy records that might be missing IDs
+    if (clientName) {
+      clientMatch.$or.push({ clientName: clientName });
+      // Some legacy systems might use different casing or field names
+      clientMatch.$or.push({ clientName: clientName.toUpperCase() });
+    }
 
     const [bookings, transactionDocs, paymentsDocs, outstandingInvoicesResult, commoditiesResult] = await Promise.all([
       db.collection('bookings')
         .find({ 
-          $or: [{ accountId: trimmedClientId }, { clientId: trimmedClientId }, { clientId: new ObjectId(trimmedClientId) }], 
+          ...clientMatch,
           direction: { $in: ['INWARD', 'OUTWARD'] }, 
           ...tenantFilter 
         })
@@ -43,18 +65,14 @@ export async function GET(
         .toArray(),
       db.collection('transactions')
         .find({ 
-          $or: [{ accountId: trimmedClientId }, { clientId: trimmedClientId }, { clientId: new ObjectId(trimmedClientId) }], 
+          ...clientMatch,
           ...tenantFilter 
         })
         .sort({ date: 1 })
         .toArray(),
       db.collection('payments')
         .find({ 
-          $or: [
-            { accountId: trimmedClientId }, 
-            { clientId: trimmedClientId }, 
-            { clientId: new ObjectId(trimmedClientId) }
-          ], 
+          ...clientMatch,
           ...tenantFilter 
         })
         .sort({ date: 1, paymentDate: 1 })
