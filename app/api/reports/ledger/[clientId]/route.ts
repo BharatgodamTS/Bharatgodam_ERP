@@ -34,16 +34,30 @@ export async function GET(
 
     const [bookings, transactionDocs, paymentsDocs, outstandingInvoicesResult, commoditiesResult] = await Promise.all([
       db.collection('bookings')
-        .find({ accountId, direction: { $in: ['INWARD', 'OUTWARD'] }, ...tenantFilter })
+        .find({ 
+          $or: [{ accountId: trimmedClientId }, { clientId: trimmedClientId }, { clientId: new ObjectId(trimmedClientId) }], 
+          direction: { $in: ['INWARD', 'OUTWARD'] }, 
+          ...tenantFilter 
+        })
         .sort({ date: 1 })
         .toArray(),
       db.collection('transactions')
-        .find({ accountId, ...tenantFilter })
+        .find({ 
+          $or: [{ accountId: trimmedClientId }, { clientId: trimmedClientId }, { clientId: new ObjectId(trimmedClientId) }], 
+          ...tenantFilter 
+        })
         .sort({ date: 1 })
         .toArray(),
       db.collection('payments')
-        .find({ accountId, ...tenantFilter })
-        .sort({ date: 1 })
+        .find({ 
+          $or: [
+            { accountId: trimmedClientId }, 
+            { clientId: trimmedClientId }, 
+            { clientId: new ObjectId(trimmedClientId) }
+          ], 
+          ...tenantFilter 
+        })
+        .sort({ date: 1, paymentDate: 1 })
         .toArray(),
       db.collection('invoice_master')
         .aggregate([
@@ -77,7 +91,7 @@ export async function GET(
         [
           ...bookings.map((txn) => ({
             _id: txn._id?.toString() || '',
-            date: txn.date,
+            date: txn.date || txn.createdAt,
             direction: txn.direction,
             mt: txn.mt,
             clientName: txn.clientName,
@@ -86,9 +100,9 @@ export async function GET(
           })),
           ...transactionDocs.map((txn) => ({
             _id: txn._id?.toString() || '',
-            date: txn.date,
+            date: txn.date || txn.createdAt,
             direction: txn.direction,
-            mt: txn.quantityMT,
+            mt: txn.quantityMT || txn.mt,
             clientName: txn.clientName || bookings[0]?.clientName || clientId,
             commodityName: txn.commodityName,
             gatePass: txn.gatePass || '',
@@ -99,7 +113,7 @@ export async function GET(
 
     const paymentData: Payment[] = paymentsDocs.map((pay) => ({
       _id: pay._id?.toString() || '',
-      date: pay.date,
+      date: pay.date || pay.paymentDate || pay.createdAt,
       amount: pay.amount,
       clientName: pay.clientName || bookings[0]?.clientName || clientId,
     }));

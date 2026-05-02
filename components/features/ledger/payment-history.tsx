@@ -17,6 +17,7 @@ interface LineItem {
 interface PaymentHistoryProps {
   payments: Payment[];
   clientName: string;
+  clientId: string;
   isLoading?: boolean;
   onPaymentAdded?: () => void;
   lineItems?: LineItem[];
@@ -25,6 +26,7 @@ interface PaymentHistoryProps {
 export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
   payments,
   clientName,
+  clientId,
   isLoading = false,
   onPaymentAdded,
   lineItems = [],
@@ -64,6 +66,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          clientId,
           clientName,
           amount: Number(formData.amount),
           date: formData.date,

@@ -28,14 +28,24 @@ export async function POST(req: Request) {
     }
 
     const db = await getDb();
+    const idToUse = accountId || body.clientId;
+    let clientObjectId: ObjectId | null = null;
+    try {
+      if (idToUse) clientObjectId = new ObjectId(String(idToUse).trim());
+    } catch (e) {
+      console.warn('Invalid clientId for ObjectId conversion:', idToUse);
+    }
 
     const paymentDocument = appendOwnership({
-      accountId: accountId?.trim() || null,
+      accountId: idToUse?.trim() || null,
+      clientId: clientObjectId,
       clientName: clientName?.trim() || '',
       amount: Number(amount),
       date: new Date(date).toISOString().split('T')[0],
+      paymentDate: new Date(date), // Add paymentDate for consistency with recordPayment action
       recordedBy: session.user?.email,
       createdAt: new Date(),
+      status: 'COMPLETED',
     }, session);
 
     const result = await db.collection('payments').insertOne(paymentDocument);
