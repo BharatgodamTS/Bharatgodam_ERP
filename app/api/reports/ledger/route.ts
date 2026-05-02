@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { appendOwnership, requireSession } from '@/lib/ownership';
+import { ObjectId } from 'mongodb';
 
 /**
  * POST /api/reports/ledger
