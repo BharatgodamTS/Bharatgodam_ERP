@@ -12,19 +12,28 @@ import { differenceInDays, max, min, startOfMonth, endOfMonth, isLastDayOfMonth 
  * - ACTIVE periods are inclusive of the end date.
  * - COMPLETED periods are exclusive of the end date (transaction boundary).
  */
+/**
+ * Helper function to calculate days for storage periods.
+ * - ACTIVE periods are inclusive of the end date (+1).
+ * - COMPLETED periods are exclusive of the end date (transaction boundary, no +1).
+ */
 function calculateStorageDays(
   fromDate: string | Date,
-  toDate: string | Date
+  toDate: string | Date,
+  isInclusive: boolean = true
 ): number {
   const from = typeof fromDate === 'string' ? new Date(fromDate) : fromDate;
   const to = typeof toDate === 'string' ? new Date(toDate) : toDate;
 
   // Edge case: same day
   if (from.getTime() === to.getTime()) {
+    // If it's same day, even for completed it must count as 1 day of occupancy
+    // or if it's active month end fallback.
     return 1;
   }
 
-  return Math.max(1, differenceInDays(to, from) + 1);
+  const diff = differenceInDays(to, from);
+  return Math.max(1, isInclusive ? diff + 1 : diff);
 }
 
 export interface Transaction {
@@ -59,17 +68,21 @@ export interface DaySnapshot {
 export function splitPeriodByMonth(period: StoragePeriod): StoragePeriod[] {
   const result: StoragePeriod[] = [];
   let currentStart = new Date(period.fromDate);
-  const end = new Date(period.toDate);
+  const periodEnd = new Date(period.toDate);
 
-  while (currentStart <= end) {
+  while (currentStart <= periodEnd) {
     // Get the end of the current month
     const monthEnd = endOfMonth(currentStart);
     
     // The segment ends at either the month end or the period end, whichever is earlier
-    const segmentEnd = end < monthEnd ? end : monthEnd;
+    const segmentEnd = periodEnd < monthEnd ? periodEnd : monthEnd;
 
-    // Calculate days for this segment based on whether the period is active or completed
-    const days = calculateStorageDays(currentStart, segmentEnd);
+    // IMPORTANT: Segment is inclusive IF it's not the final segment of a COMPLETED period
+    const isFinalSegment = segmentEnd.getTime() === periodEnd.getTime();
+    const isInclusive = !isFinalSegment || period.status === 'ACTIVE';
+
+    // Calculate days for this segment
+    const days = calculateStorageDays(currentStart, segmentEnd, isInclusive);
     
     // Calculate rent for this segment
     const rent = period.qty * period.rate * days;
@@ -101,9 +114,6 @@ export function generateStoragePeriods(
   month?: string, // YYYY-MM
   rate: number = 10 // daily rate per MT
 ): StoragePeriod[] {
-  console.log(`generateStoragePeriods called with ${transactions.length} transactions, month: ${month}, rate: ${rate}`);
-  console.log('Transactions:', transactions);
-
   if (!transactions.length) return [];
 
   // Step 1: Normalize transactions
@@ -113,21 +123,18 @@ export function generateStoragePeriods(
           t.date,
     qty: t.type === 'INWARD' ? t.qty : -t.qty
   }));
-  console.log('Normalized transactions:', normalizedTxns);
 
-  // Step 2: Group by date to get daily net changes (CRITICAL FIX)
+  // Step 2: Group by date to get daily net changes
   const groupedByDate: Record<string, number> = {};
   normalizedTxns.forEach(txn => {
     if (!groupedByDate[txn.date]) groupedByDate[txn.date] = 0;
     groupedByDate[txn.date] += txn.qty;
   });
-  console.log('Grouped by date (daily net changes):', groupedByDate);
 
   // Step 3: Convert to sorted daily transactions
   const dailyTxns = Object.entries(groupedByDate)
     .map(([date, qty]) => ({ date, qty }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  console.log('Daily transactions (sorted):', dailyTxns);
 
   // Step 4: Generate periods using running balance
   let balance = 0;
@@ -141,8 +148,8 @@ export function generateStoragePeriods(
 
     if (!next) break;
 
-    // Calculate days between dates inclusively
-    const days = calculateStorageDays(current.date, next.date);
+    // Calculate days between transaction dates (EXCLUSIVE of the next transaction date)
+    const days = calculateStorageDays(current.date, next.date, false);
 
     if (days > 0) {
       const rent = balance * rate * days;
@@ -155,7 +162,6 @@ export function generateStoragePeriods(
         rent,
         status: 'COMPLETED'
       });
-      console.log(`Added period: ${current.date} to ${next.date}, balance: ${balance}, days: ${days}`);
     }
   }
 
@@ -175,9 +181,8 @@ export function generateStoragePeriods(
     }
 
     const status = balance > 0 ? 'ACTIVE' : 'COMPLETED';
-    const days = calculateStorageDays(fromDate, toDate);
-
-    console.log(`Last period: ${fromDate} to ${toDate}, balance: ${balance}, status: ${status}, days: ${days}`);
+    // Final period is INCLUSIVE (+1) because it either ends at month end or today (no outward txn)
+    const days = calculateStorageDays(fromDate, toDate, true);
 
     if (days > 0 && balance > 0) {
       const rent = balance * rate * days;
@@ -188,9 +193,8 @@ export function generateStoragePeriods(
         days,
         rate,
         rent,
-        status: balance > 0 ? 'ACTIVE' : 'COMPLETED'
+        status: status
       });
-      console.log(`Added last period: ${fromDate} to ${toDate}, ${balance}MT, ${days} days`);
     }
   }
 
@@ -206,12 +210,21 @@ export function generateStoragePeriods(
         return splits;
       })
       .map(period => {
-        const effectiveFrom = max([new Date(period.fromDate), monthStart]);
-        const effectiveTo = min([new Date(period.toDate), monthEnd]);
+        const periodFromDate = new Date(period.fromDate);
+        const periodToDate = new Date(period.toDate);
+        
+        const effectiveFrom = max([periodFromDate, monthStart]);
+        const effectiveTo = min([periodToDate, monthEnd]);
 
         if (effectiveFrom <= effectiveTo) {
-          const days = calculateStorageDays(effectiveFrom, effectiveTo);
+          // Check if this segment still ends on the original transaction date
+          const originalToDate = new Date(period.toDate);
+          const isFinalSegmentOfTransaction = effectiveTo.getTime() === originalToDate.getTime();
+          const isInclusive = !isFinalSegmentOfTransaction || period.status === 'ACTIVE';
+
+          const days = calculateStorageDays(effectiveFrom, effectiveTo, isInclusive);
           const rent = period.qty * rate * days;
+          
           return {
             ...period,
             fromDate: effectiveFrom.toISOString().split('T')[0],
@@ -224,15 +237,11 @@ export function generateStoragePeriods(
       })
       .filter(Boolean) as StoragePeriod[];
 
-    console.log("RAW PERIODS:", periods);
-    console.log("FILTERED PERIODS:", filteredPeriods);
     return filteredPeriods;
   }
 
   // Split all periods by month boundaries (for ledger view with all months)
   const splitPeriods = periods.flatMap(p => splitPeriodByMonth(p));
-  
-  console.log("RAW PERIODS (no month filter):", periods);
-  console.log("SPLIT PERIODS (by month):", splitPeriods);
   return splitPeriods;
 }
+
