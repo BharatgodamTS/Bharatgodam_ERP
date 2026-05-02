@@ -274,5 +274,3 @@ export default function RevenueDashboard() {
     </div>
   );
 }
-
-}
